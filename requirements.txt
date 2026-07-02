@@ -1,0 +1,9 @@
+python-pptx>=1.0
+pdf2image>=1.17
+Pillow>=10.0
+openai>=1.40
+PyYAML>=6.0
+tqdm>=4.66
+# 系統相依(非 pip):LibreOffice(soffice)、poppler(pdf2image 用)
+# macOS:  brew install libreoffice poppler
+# Debian: apt-get install libreoffice poppler-utils
