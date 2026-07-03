@@ -48,10 +48,20 @@ python run.py ./decks --out ./bundle
 | `OKF_MAX_CONCURRENCY` | 8 | 平行呼叫數 |
 | `OKF_SYNTH_REFEED_IMAGES` | true | C 階段是否重餵圖:true=忠實度最高(較貴)、false=純文字 reduce(便宜、品質被 densify 卡上限) |
 
-## 給線上模型用
+## RAG(Phase 1:向量檢索,append-only)
 
-- **RAG**:每個 `.md` 天然是 chunk 邊界 → embedding(bge-m3 / Qwen3-Embedding)→ vector DB(Qdrant/pgvector)→ 線上小模型(Qwen3-14B/32B-Instruct)。
-- **直掛**:量小時把 `bundle/` 接 MCP filesystem / retrieval tool,模型按需讀 `.md`。
+架構見 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md):OKF 是唯一真相,RAG 是可重建的衍生索引。
+
+```bash
+export OKF_EMBED_BASE_URL=http://<embed-host>:8001/v1   # OpenAI 相容
+export OKF_EMBED_MODEL=bge-m3
+python -m pptx_to_okf.rag.ingest ./bundle --db ./rag.db   # 增量,content_hash 沒變就跳過
+python -m pptx_to_okf.rag.query "delamination 的成因?" --db ./rag.db
+```
+
+- 一個 concept `.md` = 一個 chunk(天然邊界);低信心 concept 檢索時會標註。
+- 向量庫 Phase 1 用內建 sqlite 暴力 cosine(零 infra);規模上來換 Qdrant/pgvector,只需換 `rag/store.py`。
+- **直掛**(替代路線):量小時把 `bundle/` 接 MCP filesystem / retrieval tool,模型按需讀 `.md`。
 
 ## 待辦 / 已知限制
 

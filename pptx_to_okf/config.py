@@ -26,3 +26,13 @@ SYNTH_REFEED_IMAGES = os.environ.get("OKF_SYNTH_REFEED_IMAGES", "true").lower() 
 
 # 產物根目錄
 BUNDLE_ROOT = os.environ.get("OKF_BUNDLE_ROOT", "./bundle")
+
+# ── RAG(Phase 1)──────────────────────────────────────────────
+# embedding 端點(OpenAI 相容,self-host bge-m3 / Qwen3-Embedding)
+EMBED_BASE_URL = os.environ.get("OKF_EMBED_BASE_URL", "http://localhost:8001/v1")
+EMBED_API_KEY = os.environ.get("OKF_EMBED_API_KEY", "EMPTY")
+EMBED_MODEL = os.environ.get("OKF_EMBED_MODEL", "bge-m3")
+EMBED_BATCH = int(os.environ.get("OKF_EMBED_BATCH", "64"))
+
+# 向量庫:Phase 1 用內建 sqlite 暴力 cosine(零 infra);規模上來換 Qdrant/pgvector
+RAG_DB = os.environ.get("OKF_RAG_DB", "./rag.db")
