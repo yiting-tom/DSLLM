@@ -63,6 +63,25 @@ python -m pptx_to_okf.rag.query "delamination 的成因?" --db ./rag.db
 - 向量庫 Phase 1 用內建 sqlite 暴力 cosine(零 infra);規模上來換 Qdrant/pgvector,只需換 `rag/store.py`。
 - **直掛**(替代路線):量小時把 `bundle/` 接 MCP filesystem / retrieval tool,模型按需讀 `.md`。
 
+### facet 過濾
+```bash
+python -m pptx_to_okf.rag.query "分層問題" --type "Failure Mode" --no-low-confidence --facts-only
+# --type 指定類別 · --tag 可重複 · --no-low-confidence 排除低信心 · --facts-only 排除衍生摘要
+```
+
+### 疑似重複(dedup flagging)
+ingest 對每個新 concept 比對最相似既有項,`≥ OKF_DEDUP_THRESHOLD`(預設 0.92)只寫報告、**不自動合併**(唯讀,交人審):
+```bash
+python -m pptx_to_okf.rag.ingest ./bundle --db ./rag.db   # 疑似重複 → <db>.flags.jsonl
+```
+
+### eval harness
+```bash
+python -m pptx_to_okf.eval.runner eval.yaml --db ./rag.db          # 真 embedding
+python -m pptx_to_okf.eval.runner eval.yaml --db ./rag.db --fake   # 假 embedder 離線自測
+```
+`eval.yaml` 每題 `question` + `expect_ids`/`expect_keywords`;輸出 recall@k、逐題排名、低信心命中標註。真題由領域專家填。
+
 ## 待辦 / 已知限制
 
 - **關鍵數值需抽樣人工核對**:prompt 已要求低信心標註,vision 讀尺寸/bin map 仍會錯。

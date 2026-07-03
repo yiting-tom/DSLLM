@@ -190,9 +190,11 @@ flowchart TB
 |---|---|
 | extract / A / B / C / merge / build | ✅ 已建、已推(`yiting-tom/DSLLM`) |
 | `--dump-only` 驗證 | ✅ |
-| OKF frontmatter 契約(§3) | ⬜ Phase 1 |
-| 向量 RAG ingest | ⬜ Phase 1 |
+| OKF frontmatter 契約(§3) | ✅ Phase 1 |
+| 向量 RAG ingest(append-only、增量) | ✅ Phase 1 |
+| facet 過濾(type/tags/confidence/generated) | ✅ Phase 1 |
+| 疑似重複標旗標(唯讀,取代自動合併) | ✅ Phase 1 |
+| golden eval harness(recall@k、假 embedder 自測) | ✅ Phase 1(骨架;真題待領域專家) |
 | graph + 摘要 | ⬜ Phase 2 |
 | 增量策展迴路 | ⬜ Phase 3 |
-| golden eval set | ⬜ 越早越好 |
 | HITL 補洞 | ⬜ |

@@ -36,3 +36,6 @@ EMBED_BATCH = int(os.environ.get("OKF_EMBED_BATCH", "64"))
 
 # 向量庫:Phase 1 用內建 sqlite 暴力 cosine(零 infra);規模上來換 Qdrant/pgvector
 RAG_DB = os.environ.get("OKF_RAG_DB", "./rag.db")
+
+# 疑似重複門檻:高(保守),寧漏報不誤報(把根因不同的相似缺陷併掉最糟)
+DEDUP_THRESHOLD = float(os.environ.get("OKF_DEDUP_THRESHOLD", "0.92"))

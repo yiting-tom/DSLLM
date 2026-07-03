@@ -15,7 +15,8 @@ from typing import Protocol
 class Store(Protocol):
     def has(self, cid: str, content_hash: str) -> bool: ...
     def upsert(self, cid: str, content_hash: str, text: str, metadata: dict, vector: list[float]) -> None: ...
-    def topk(self, vector: list[float], k: int) -> list[dict]: ...
+    def topk(self, vector: list[float], k: int,
+             where: dict | None = None, exclude_id: str | None = None) -> list[dict]: ...
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -23,6 +24,21 @@ def _cosine(a: list[float], b: list[float]) -> float:
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
+
+
+def _match(m: dict, where: dict | None) -> bool:
+    """facet 過濾:where 為 None 時全通過(行為不變)。"""
+    if not where:
+        return True
+    if (t := where.get("type")) and m.get("type") != t:
+        return False
+    if (tags := where.get("tags_any")) and not (set(tags) & set(m.get("tags") or [])):
+        return False
+    if where.get("exclude_low_confidence") and m.get("confidence") == "low":
+        return False
+    if where.get("facts_only") and m.get("generated"):
+        return False
+    return True
 
 
 class SqliteStore:
@@ -49,13 +65,18 @@ class SqliteStore:
         )
         self.db.commit()
 
-    def topk(self, vector: list[float], k: int = 5) -> list[dict]:
+    def topk(self, vector: list[float], k: int = 5,
+             where: dict | None = None, exclude_id: str | None = None) -> list[dict]:
         rows = self.db.execute("SELECT id, text, metadata, vector FROM chunks").fetchall()
         scored = []
         for cid, text, meta, vec in rows:
+            if cid == exclude_id:
+                continue
+            m = json.loads(meta)
+            if not _match(m, where):          # 過濾在排序前套用,k 名額給符合者
+                continue
             scored.append({
-                "id": cid, "text": text,
-                "metadata": json.loads(meta),
+                "id": cid, "text": text, "metadata": m,
                 "score": _cosine(vector, json.loads(vec)),
             })
         scored.sort(key=lambda r: r["score"], reverse=True)

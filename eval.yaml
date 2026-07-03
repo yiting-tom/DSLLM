@@ -1,0 +1,14 @@
+# golden 問答集 —— 範例(假資料)
+#
+# ⚠️ 這只是格式示範。請由領域專家用「真 pptx 進庫後」的實際問題與期望命中替換。
+# 每題:question + (expect_ids 擇一 或 expect_keywords)。
+# 建議累積 10–20 題涵蓋常見查詢,每次改動後跑 eval 抓靜默劣化。
+
+- question: "delamination 的成因是什麼?"
+  expect_keywords: ["分層", "delamination"]
+
+- question: "EMC 的 Tg 規格?"
+  expect_keywords: ["EMC", "Tg"]
+
+- question: "wire bond 製程參數"
+  expect_keywords: ["wire bond", "打線"]
