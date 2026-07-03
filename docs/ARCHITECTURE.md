@@ -190,6 +190,7 @@ flowchart TB
 |---|---|
 | extract / A / B / C / merge / build | ✅ 已建、已推(`yiting-tom/DSLLM`) |
 | 圖片資料夾輸入(`--images`,過渡:審核未過不讀 pptx) | ✅ |
+| 圖片前處理(縮圖/自適應切塊/裁邊 + 選配 OCR 錨點) | ✅ |
 | `--dump-only` 驗證 | ✅ |
 | OKF frontmatter 契約(§3) | ✅ Phase 1 |
 | 向量 RAG ingest(append-only、增量) | ✅ Phase 1 |

@@ -4,6 +4,10 @@ Pillow>=10.0
 openai>=1.40
 PyYAML>=6.0
 tqdm>=4.66
-# 系統相依(非 pip):LibreOffice(soffice)、poppler(pdf2image 用)
+# 系統相依(非 pip,僅 pptx 模式需要):LibreOffice(soffice)、poppler(pdf2image 用)
 # macOS:  brew install libreoffice poppler
 # Debian: apt-get install libreoffice poppler-utils
+#
+# 選配(圖片模式 OCR 文字錨點,未裝則自動略過):
+#   paddleocr     # 中英混建議(CJK 強);需另裝 paddlepaddle
+#   pytesseract   # 退路;需系統 tesseract-ocr

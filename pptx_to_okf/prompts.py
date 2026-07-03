@@ -37,8 +37,8 @@ def densify_user(slide):
     if slide.notes:
         parts.append(f"(講者備註:{slide.notes})")
     content = [{"type": "text", "text": "\n".join(parts)}]
-    if slide.image_png:
-        content.append({"type": "image_url", "image_url": {"url": slide.image_data_uri()}})
+    for uri in slide.image_uris():                       # 密集頁可能多塊,一起餵
+        content.append({"type": "image_url", "image_url": {"url": uri}})
     return content
 
 
@@ -107,8 +107,9 @@ def synthesize_user(group: dict, slides_by_idx: dict, dumps: dict[int, str], glo
     content = [{"type": "text", "text": head}]
     for i in idxs:
         content.append({"type": "text", "text": f"\n=== Slide {i} 榨出的文字 ===\n{dumps.get(i,'')}"})
-        if refeed_images and slides_by_idx[i].image_png:
-            content.append({"type": "image_url", "image_url": {"url": slides_by_idx[i].image_data_uri()}})
+        if refeed_images:
+            for uri in slides_by_idx[i].image_uris():
+                content.append({"type": "image_url", "image_url": {"url": uri}})
     return content
 
 

@@ -13,6 +13,17 @@ SSL_VERIFY = os.environ.get("SSL_VERIFY", "true").lower() not in ("false", "0", 
 # 逐頁 densify(一頁一圖)不怕吃 context,可用 200~300。
 RENDER_DPI = int(os.environ.get("OKF_RENDER_DPI", "220"))
 
+# ── 圖片前處理(送 K2.7 前;K2.7 context 200k)──────────────────
+MAX_IMAGE_PX = int(os.environ.get("OKF_MAX_IMAGE_PX", "1600"))       # 長邊上限(≈vision 實際用的解析度)
+MAX_IMAGE_BYTES = int(os.environ.get("OKF_MAX_IMAGE_BYTES", "1500000"))  # 單圖位元組預算,超則退 JPEG
+TILE_TRIGGER_PX = int(os.environ.get("OKF_TILE_TRIGGER_PX", "2600"))  # 長邊超此 → 密集頁切塊(不硬縮)
+MAX_TILES = int(os.environ.get("OKF_MAX_TILES", "6"))                # 切塊上限,超過退回縮圖
+TRIM_MARGINS = os.environ.get("OKF_TRIM_MARGINS", "true").lower() not in ("false", "0", "no")
+
+# OCR 文字錨點(僅圖片模式;可插拔選配)。auto=有 Paddle 用 Paddle、否則 tesseract、否則略過
+OCR = os.environ.get("OKF_OCR", "auto").lower()                      # auto | off | paddle | tesseract
+OCR_LANG = os.environ.get("OKF_OCR_LANG", "")                        # 空=引擎預設(Paddle: ch;tesseract: chi_tra+eng)
+
 # 平行度(vision 呼叫走 IO,ThreadPool 即可)
 MAX_CONCURRENCY = int(os.environ.get("OKF_MAX_CONCURRENCY", "8"))
 

@@ -56,13 +56,29 @@ topics/
 ```
 審核通過後改回 `python run.py ./decks`(pptx 模式)即可,後段完全相同。
 
+### 圖片前處理(送 K2.7 前,兩種模式都套)
+
+大圖以 base64 送自架 K2.7(OpenAI 相容端點)會撞 body 上限 / vision token 爆。送出前確定性前處理(**非 agentic**):
+- **縮圖 + 重編碼**:長邊降到 `OKF_MAX_IMAGE_PX`(1600,≈vision 實際用的解析度,對小字幾乎無損);超位元組預算退 JPEG。
+- **自適應密集頁切塊**:過大/過密的頁不硬縮,切成數塊(重疊防切字)一起餵 densify → 保留小字。
+- **自動裁邊**:去空白邊,讓內容佔滿像素預算。
+- **OCR 文字錨點(選配)**:圖片模式對每圖跑 OCR(PaddleOCR 優先,退 tesseract,皆無則略過),填入 densify 的校正錨點——補回 pptx 模式才有的精確文字。中英混建議裝 `paddleocr`。
+
 ## 旋鈕(env)
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
-| `OKF_RENDER_DPI` | 220 | slide 渲染 DPI;截圖/小字多可拉到 300 |
+| `OKF_RENDER_DPI` | 220 | slide 渲染 DPI;送出前才降到 `MAX_IMAGE_PX`,故渲染仍可高 |
 | `OKF_MAX_CONCURRENCY` | 8 | 平行呼叫數 |
-| `OKF_SYNTH_REFEED_IMAGES` | true | C 階段是否重餵圖:true=忠實度最高(較貴)、false=純文字 reduce(便宜、品質被 densify 卡上限) |
+| `OKF_SYNTH_REFEED_IMAGES` | true | C 階段是否重餵圖:true=忠實度最高(較貴)、false=純文字 reduce |
+| `OKF_MAX_IMAGE_PX` | 1600 | 送 vision 前圖片長邊上限 |
+| `OKF_MAX_IMAGE_BYTES` | 1500000 | 單圖位元組預算(超則退 JPEG) |
+| `OKF_TILE_TRIGGER_PX` | 2600 | 長邊超此 → 密集頁切塊 |
+| `OKF_MAX_TILES` | 6 | 切塊上限,超過退回縮圖 |
+| `OKF_TRIM_MARGINS` | true | 自動裁邊 |
+| `OKF_OCR` | auto | OCR 引擎:auto / off / paddle / tesseract |
+
+> K2.7 context = 200k;densify 逐頁一圖、cluster 走純文字,皆遠在其內。
 
 ## RAG(Phase 1:向量檢索,append-only)
 

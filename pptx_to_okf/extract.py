@@ -7,7 +7,6 @@ pptx 工具鏈的環境仍可 import 執行。
 """
 from __future__ import annotations
 
-import base64
 import io
 import re
 import shutil
@@ -16,7 +15,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config
+from . import config, imageprep
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
@@ -25,14 +24,13 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 class Slide:
     index: int                    # 1-based
     title: str = ""
-    text: str = ""                # shape 內所有文字(含條列)
+    text: str = ""                # 文字錨點:pptx 模式=python-pptx;圖片模式=OCR
     tables: list[list[list[str]]] = field(default_factory=list)
     notes: str = ""               # 講者備註
-    image_png: bytes = b""        # 整張 slide 的渲染圖
+    images: list[bytes] = field(default_factory=list)   # 前處理後的圖(1 張或密集頁多塊)
 
-    def image_data_uri(self) -> str:
-        b64 = base64.b64encode(self.image_png).decode()
-        return f"data:image/png;base64,{b64}"
+    def image_uris(self) -> list[str]:
+        return [imageprep.data_uri(b) for b in self.images]
 
 
 @dataclass
@@ -81,24 +79,20 @@ def _natkey(name: str):
     return [int(s) if s.isdigit() else s.lower() for s in re.split(r"(\d+)", name)]
 
 
-def _load_png(path: Path) -> bytes:
-    """任意圖片 → PNG bytes(統一 mime,配合 Slide.image_data_uri)。Pillow 延遲載入。"""
-    from PIL import Image
-
-    with Image.open(path) as im:
-        buf = io.BytesIO()
-        im.convert("RGB").save(buf, format="PNG")
-        return buf.getvalue()
-
-
 def extract_image_dir(topic_dir: str | Path) -> Deck:
-    """圖片模式:一個主題資料夾內的投影片圖片 → Deck(每圖一 slide,檔名自然排序)。"""
+    """圖片模式:一個主題資料夾內的投影片圖片 → Deck(每圖一 slide,檔名自然排序)。
+    每圖過前處理(裁邊/切塊/縮圖);OCR(選配)結果填入文字錨點。"""
+    from . import ocr
+
     topic_dir = Path(topic_dir)
     imgs = sorted(
         (p for p in topic_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS),
         key=lambda p: _natkey(p.name),
     )
-    slides = [Slide(index=i, image_png=_load_png(p)) for i, p in enumerate(imgs, start=1)]
+    slides: list[Slide] = []
+    for i, p in enumerate(imgs, start=1):
+        raw = p.read_bytes()
+        slides.append(Slide(index=i, images=imageprep.normalize(raw), text=ocr.ocr_image(raw)))
     return Deck(path=topic_dir, slides=slides)
 
 
@@ -125,8 +119,9 @@ def extract(pptx_path: str | Path) -> Deck:
         notes = ""
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
             notes = slide.notes_slide.notes_text_frame.text.strip()
+        images = imageprep.normalize(pngs[i - 1]) if i - 1 < len(pngs) else []
         slides.append(Slide(
             index=i, title=title, text="\n".join(texts), tables=tables, notes=notes,
-            image_png=pngs[i - 1] if i - 1 < len(pngs) else b"",
+            images=images,
         ))
     return Deck(path=pptx_path, slides=slides)
