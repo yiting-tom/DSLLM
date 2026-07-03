@@ -189,6 +189,7 @@ flowchart TB
 | 區塊 | 狀態 |
 |---|---|
 | extract / A / B / C / merge / build | ✅ 已建、已推(`yiting-tom/DSLLM`) |
+| 圖片資料夾輸入(`--images`,過渡:審核未過不讀 pptx) | ✅ |
 | `--dump-only` 驗證 | ✅ |
 | OKF frontmatter 契約(§3) | ✅ Phase 1 |
 | 向量 RAG ingest(append-only、增量) | ✅ Phase 1 |

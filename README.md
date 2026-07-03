@@ -40,6 +40,22 @@ python run.py ./decks --out ./bundle
 
 產物 `./bundle/`:`<主題>/<slug>.md` + `log.md`(轉換紀錄)。
 
+### 圖片模式(過渡:審核未過不能讀 pptx 時)
+
+先把投影片轉成圖片,用圖片跑;**不需 pptx 工具鏈**(python-pptx / LibreOffice / poppler 都不用)。
+
+```bash
+python run.py ./topics --images --out ./bundle
+```
+資料夾結構:根目錄下每個子資料夾 = 一個主題,內含該主題投影片圖片(png/jpg/jpeg/webp),依**檔名自然排序**當頁序;若根目錄自身直接含圖片則當單一主題。
+
+```
+topics/
+├── wire-bond/      01.png 02.png 03.png ...
+└── delamination/   01.jpg 02.jpg ...
+```
+審核通過後改回 `python run.py ./decks`(pptx 模式)即可,後段完全相同。
+
 ## 旋鈕(env)
 
 | 變數 | 預設 | 說明 |

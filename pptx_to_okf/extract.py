@@ -1,18 +1,24 @@
-"""① PPTX 拆解:抽文字/表格/講者備註 + 每張 slide 轉成圖(給 vision 用)。"""
+"""① 拆解成 Deck(給 vision 用):
+   - pptx 模式:抽文字/表格/講者備註 + 每張 slide 渲染成圖(需 pptx 工具鏈)
+   - 圖片模式:直接把資料夾裡的投影片圖片當 slide(過渡方案,不需 pptx 工具鏈)
+
+pptx 相依(python-pptx / pdf2image)與 Pillow 皆延遲載入,使圖片模式在未裝
+pptx 工具鏈的環境仍可 import 執行。
+"""
 from __future__ import annotations
 
 import base64
 import io
+import re
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pptx import Presentation
-from pdf2image import convert_from_path
-
 from . import config
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 @dataclass
@@ -50,6 +56,8 @@ def _table(shape) -> list[list[str]] | None:
 
 def _render_slides_to_png(pptx_path: Path) -> list[bytes]:
     """soffice: pptx -> pdf -> 每頁 PNG。頁序對應 slide 序。"""
+    from pdf2image import convert_from_path        # 延遲載入:圖片模式不需要
+
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
         raise RuntimeError("找不到 soffice/libreoffice,請先安裝 LibreOffice。")
@@ -68,7 +76,35 @@ def _render_slides_to_png(pptx_path: Path) -> list[bytes]:
         return out
 
 
+def _natkey(name: str):
+    """自然排序:數字段轉 int,使 slide_2 排在 slide_10 之前。"""
+    return [int(s) if s.isdigit() else s.lower() for s in re.split(r"(\d+)", name)]
+
+
+def _load_png(path: Path) -> bytes:
+    """任意圖片 → PNG bytes(統一 mime,配合 Slide.image_data_uri)。Pillow 延遲載入。"""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, format="PNG")
+        return buf.getvalue()
+
+
+def extract_image_dir(topic_dir: str | Path) -> Deck:
+    """圖片模式:一個主題資料夾內的投影片圖片 → Deck(每圖一 slide,檔名自然排序)。"""
+    topic_dir = Path(topic_dir)
+    imgs = sorted(
+        (p for p in topic_dir.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS),
+        key=lambda p: _natkey(p.name),
+    )
+    slides = [Slide(index=i, image_png=_load_png(p)) for i, p in enumerate(imgs, start=1)]
+    return Deck(path=topic_dir, slides=slides)
+
+
 def extract(pptx_path: str | Path) -> Deck:
+    from pptx import Presentation                  # 延遲載入:圖片模式不需要
+
     pptx_path = Path(pptx_path)
     prs = Presentation(str(pptx_path))
     pngs = _render_slides_to_png(pptx_path)

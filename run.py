@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""pptx → OKF bundle 批次轉換 CLI(densify → cluster → synthesize → merge)。
+"""pptx / 圖片資料夾 → OKF bundle 批次轉換 CLI(densify → cluster → synthesize → merge)。
 
-用法:
-    OKF_LLM_BASE_URL=http://k2:8000/v1 OKF_LLM_MODEL=kimi-k2.7 \
-    python run.py ./decks --out ./bundle
+pptx 模式:
+    python run.py ./decks --out ./bundle          # 單一 .pptx 或含 pptx 的目錄
 
-    先驗證前兩段品質(不燒 Stage C 的 vision token):
-    python run.py ./decks --dump-only
+圖片模式(過渡方案,審核未過不能讀 pptx 時用;不需 pptx 工具鏈):
+    python run.py ./topics --images --out ./bundle
+    # ./topics 下每個子資料夾 = 一個主題,內含該主題投影片圖片;若 ./topics 自身含圖片則當單一主題
 
-    ./decks 可為單一 .pptx 或含多份 .pptx 的目錄。
+先驗證前兩段品質(不燒 Stage C 的 vision token):加 --dump-only
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from pptx_to_okf import config, build
-from pptx_to_okf.extract import extract
+from pptx_to_okf.extract import extract, extract_image_dir, IMAGE_EXTS
 from pptx_to_okf.densify import densify
 from pptx_to_okf.cluster import cluster
 from pptx_to_okf.synthesize import synthesize
@@ -34,8 +34,19 @@ def find_decks(path: Path) -> list[Path]:
     return sorted(p for p in path.rglob("*.pptx") if not p.name.startswith("~$"))
 
 
-def process_deck(deck_path: Path, out: Path) -> int:
-    deck = extract(deck_path)                       # 抽文字/表格/備註 + 渲染每頁圖
+def _has_images(d: Path) -> bool:
+    return d.is_dir() and any(p.is_file() and p.suffix.lower() in IMAGE_EXTS for p in d.iterdir())
+
+
+def find_topics(root: Path) -> list[Path]:
+    """圖片模式:root 自身含圖片 → 單一主題;否則取每個含圖片的子資料夾。"""
+    if _has_images(root):
+        return [root]
+    return sorted(d for d in root.iterdir() if _has_images(d))
+
+
+def process_deck(deck_path: Path, out: Path, extractor) -> int:
+    deck = extractor(deck_path)                     # pptx 或圖片資料夾 → Deck
     dumps = densify(deck)                           # A：逐頁 vision → 純文字
     clustered = cluster(deck_path.stem, dumps)      # B：純文字聚類 + glossary
     concepts = synthesize(deck, dumps, clustered)   # C：分組寫 OKF + 跨群合併
@@ -45,9 +56,9 @@ def process_deck(deck_path: Path, out: Path) -> int:
     return len(concepts)
 
 
-def dump_deck(deck_path: Path, debug_dir: Path) -> int:
+def dump_deck(deck_path: Path, debug_dir: Path, extractor) -> int:
     """只跑到 Stage A/B:把逐頁 densify 文字與分組結果落地,供人工檢視。不呼叫 Stage C。"""
-    deck = extract(deck_path)
+    deck = extractor(deck_path)
     dumps = densify(deck)
     clustered = cluster(deck_path.stem, dumps)
 
@@ -68,34 +79,43 @@ def dump_deck(deck_path: Path, debug_dir: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("input", type=Path, help=".pptx 檔或含 pptx 的目錄")
+    ap.add_argument("input", type=Path, help=".pptx/pptx 目錄,或(--images)含主題子資料夾的根目錄")
+    ap.add_argument("--images", action="store_true",
+                    help="圖片模式:input 為根目錄,每子資料夾一主題;不需 pptx 工具鏈")
     ap.add_argument("--out", type=Path, default=Path(config.BUNDLE_ROOT))
     ap.add_argument("--dump-only", action="store_true",
                     help="只跑 densify+cluster,落地文字與分組供檢視,不跑 Stage C")
     ap.add_argument("--debug-dir", type=Path, default=Path("./debug"))
     args = ap.parse_args()
 
-    decks = find_decks(args.input)
-    if not decks:
-        print(f"找不到 pptx:{args.input}", file=sys.stderr)
+    if args.images:
+        if not args.input.is_dir():
+            print(f"圖片模式的 input 需為資料夾:{args.input}", file=sys.stderr)
+            return 1
+        jobs, extractor, kind = find_topics(args.input), extract_image_dir, "主題"
+    else:
+        jobs, extractor, kind = find_decks(args.input), extract, "deck"
+
+    if not jobs:
+        print(f"找不到{'圖片主題資料夾' if args.images else ' pptx'}:{args.input}", file=sys.stderr)
         return 1
     if args.dump_only:
-        print(f"[dump-only] 共 {len(decks)} 份 deck → {args.debug_dir}")
+        print(f"[dump-only] 共 {len(jobs)} 份{kind} → {args.debug_dir}")
     else:
-        print(f"共 {len(decks)} 份 deck → {args.out}  (refeed_images={config.SYNTH_REFEED_IMAGES})")
+        print(f"共 {len(jobs)} 份{kind} → {args.out}  (refeed_images={config.SYNTH_REFEED_IMAGES})")
 
     ok = fail = 0
-    for deck_path in tqdm(decks, desc="decks"):
+    for job in tqdm(jobs, desc=kind):
         try:
             if args.dump_only:
-                dump_deck(deck_path, args.debug_dir)
+                dump_deck(job, args.debug_dir, extractor)
             else:
-                n = process_deck(deck_path, args.out)
-                tqdm.write(f"[OK] {deck_path.name} → {n} concepts")
+                n = process_deck(job, args.out, extractor)
+                tqdm.write(f"[OK] {job.name} → {n} concepts")
             ok += 1
         except Exception:                          # 單份失敗不中斷整批
             fail += 1
-            tqdm.write(f"[FAIL] {deck_path.name}\n{traceback.format_exc()}")
+            tqdm.write(f"[FAIL] {job.name}\n{traceback.format_exc()}")
     dest = args.debug_dir if args.dump_only else args.out
     print(f"完成:{ok} 成功 / {fail} 失敗。輸出在 {dest}")
     return 0 if fail == 0 else 2
