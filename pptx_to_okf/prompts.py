@@ -93,6 +93,7 @@ OKF 規則:
   "subpath": "failure",
   "slug": "delamination-die-attach",
   "source_slides": [13,14],
+  "confidence": "high",              // 若含任何推測/看不清的數值,填 "low"
   "body_markdown": "## ...\\n內容"
 }}"""
 
