@@ -24,8 +24,8 @@ def _pick_engine() -> str:
     want = config.OCR                                    # auto | paddle | tesseract
     if want in ("auto", "paddle"):
         try:
-            from paddleocr import PaddleOCR
-            _paddle = PaddleOCR(use_angle_cls=True, lang=config.OCR_LANG or "ch", show_log=False)
+            from paddleocr import PaddleOCR                # PaddleOCR 3.x API
+            _paddle = PaddleOCR(use_textline_orientation=True, lang=config.OCR_LANG or "ch")
             _engine = "paddle"
             return _engine
         except Exception:
@@ -51,10 +51,9 @@ def ocr_image(raw: bytes) -> str:
             import numpy as np
             from PIL import Image
             arr = np.array(Image.open(io.BytesIO(raw)).convert("RGB"))
-            result = _paddle.ocr(arr, cls=True)
             lines = []
-            for page in result or []:
-                for _box, (txt, _conf) in page or []:
+            for page in _paddle.predict(arr) or []:          # 3.x:predict → rec_texts
+                for txt in (page.get("rec_texts") or []):
                     if txt:
                         lines.append(txt)
             return "\n".join(lines)
