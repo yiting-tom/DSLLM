@@ -96,6 +96,43 @@ def extract_image_dir(topic_dir: str | Path) -> Deck:
     return Deck(path=topic_dir, slides=slides)
 
 
+def _pdf_page_text(pdf_path: Path, page: int) -> str:
+    """抽 PDF 某頁文字層(poppler pdftotext);無或失敗回空字串。"""
+    exe = shutil.which("pdftotext")
+    if not exe:
+        return ""
+    try:
+        out = subprocess.run(
+            [exe, "-f", str(page), "-l", str(page), str(pdf_path), "-"],
+            capture_output=True, timeout=60,
+        )
+        return out.stdout.decode("utf-8", "ignore").strip()
+    except Exception:
+        return ""
+
+
+def extract_pdf(pdf_path: str | Path, first_page: int | None = None,
+                last_page: int | None = None) -> Deck:
+    """PDF 模式:每頁渲染成圖(pdf2image)+ 文字層錨點(空則 OCR)。
+    first_page/last_page 供大檔分段(1-based,含端點);預設全部。"""
+    from pdf2image import convert_from_path         # 延遲載入
+    from . import ocr
+
+    pdf_path = Path(pdf_path)
+    pages = convert_from_path(str(pdf_path), dpi=config.RENDER_DPI,
+                              first_page=first_page, last_page=last_page)
+    start = first_page or 1
+    slides: list[Slide] = []
+    for off, im in enumerate(pages):
+        idx = start + off
+        buf = io.BytesIO()
+        im.save(buf, format="PNG")
+        raw = buf.getvalue()
+        text = _pdf_page_text(pdf_path, idx) or ocr.ocr_image(raw)   # 文字層優先,空則 OCR
+        slides.append(Slide(index=idx, images=imageprep.normalize(raw), text=text))
+    return Deck(path=pdf_path, slides=slides)
+
+
 def extract(pptx_path: str | Path) -> Deck:
     from pptx import Presentation                  # 延遲載入:圖片模式不需要
 

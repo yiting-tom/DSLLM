@@ -22,7 +22,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from pptx_to_okf import config, build
-from pptx_to_okf.extract import extract, extract_image_dir, IMAGE_EXTS
+from pptx_to_okf.extract import extract, extract_image_dir, extract_pdf, IMAGE_EXTS
 from pptx_to_okf.densify import densify
 from pptx_to_okf.cluster import cluster
 from pptx_to_okf.synthesize import synthesize
@@ -43,6 +43,13 @@ def find_topics(root: Path) -> list[Path]:
     if _has_images(root):
         return [root]
     return sorted(d for d in root.iterdir() if _has_images(d))
+
+
+def find_pdfs(path: Path) -> list[Path]:
+    """PDF 模式:單一 .pdf → [檔];資料夾 → 其中每個 *.pdf 一份 deck。"""
+    if path.is_file():
+        return [path]
+    return sorted(p for p in path.glob("*.pdf"))
 
 
 def process_deck(deck_path: Path, out: Path, extractor) -> int:
@@ -82,6 +89,8 @@ def main() -> int:
     ap.add_argument("input", type=Path, help=".pptx/pptx 目錄,或(--images)含主題子資料夾的根目錄")
     ap.add_argument("--images", action="store_true",
                     help="圖片模式:input 為根目錄,每子資料夾一主題;不需 pptx 工具鏈")
+    ap.add_argument("--pdf", action="store_true",
+                    help="PDF 模式:input 為 .pdf 或含多個 .pdf 的資料夾(每檔一份 deck)")
     ap.add_argument("--out", type=Path, default=Path(config.BUNDLE_ROOT))
     ap.add_argument("--dump-only", action="store_true",
                     help="只跑 densify+cluster,落地文字與分組供檢視,不跑 Stage C")
@@ -93,11 +102,14 @@ def main() -> int:
             print(f"圖片模式的 input 需為資料夾:{args.input}", file=sys.stderr)
             return 1
         jobs, extractor, kind = find_topics(args.input), extract_image_dir, "主題"
+    elif args.pdf:
+        jobs, extractor, kind = find_pdfs(args.input), extract_pdf, "PDF"
     else:
         jobs, extractor, kind = find_decks(args.input), extract, "deck"
 
     if not jobs:
-        print(f"找不到{'圖片主題資料夾' if args.images else ' pptx'}:{args.input}", file=sys.stderr)
+        what = "圖片主題資料夾" if args.images else ("PDF" if args.pdf else " pptx")
+        print(f"找不到{what}:{args.input}", file=sys.stderr)
         return 1
     if args.dump_only:
         print(f"[dump-only] 共 {len(jobs)} 份{kind} → {args.debug_dir}")

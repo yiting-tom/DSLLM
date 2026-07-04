@@ -56,6 +56,22 @@ topics/
 ```
 審核通過後改回 `python run.py ./decks`(pptx 模式)即可,後段完全相同。
 
+### PDF 模式
+
+```bash
+python run.py "./paper.pdf" --pdf --out ./bundle      # 單一 PDF
+python run.py ./pdfs --pdf --out ./bundle             # 資料夾:每個 *.pdf 一份 deck
+```
+每頁渲染成圖 + 文字錨點(**born-digital 用文字層,掃描/影像型退回 OCR**)。需 poppler(`brew install poppler`)。
+
+### 三種輸入的文字錨點來源
+
+| 輸入 | 圖 | 文字錨點 |
+|---|---|---|
+| pptx | soffice 渲染 | python-pptx(文字/表格/備註) |
+| PDF | poppler 渲染 | 文字層 → 空則 OCR |
+| 圖片資料夾 | 原圖 | OCR |
+
 ### 圖片前處理(送 K2.7 前,兩種模式都套)
 
 大圖以 base64 送自架 K2.7(OpenAI 相容端點)會撞 body 上限 / vision token 爆。送出前確定性前處理(**非 agentic**):
