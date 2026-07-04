@@ -17,6 +17,7 @@ import json
 import sys
 import traceback
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 from tqdm import tqdm
@@ -91,6 +92,8 @@ def main() -> int:
                     help="圖片模式:input 為根目錄,每子資料夾一主題;不需 pptx 工具鏈")
     ap.add_argument("--pdf", action="store_true",
                     help="PDF 模式:input 為 .pdf 或含多個 .pdf 的資料夾(每檔一份 deck)")
+    ap.add_argument("--pages", type=str, default=None,
+                    help="PDF 模式頁範圍(1-based,含端點),如 1-15 或 5;預設全部")
     ap.add_argument("--out", type=Path, default=Path(config.BUNDLE_ROOT))
     ap.add_argument("--dump-only", action="store_true",
                     help="只跑 densify+cluster,落地文字與分組供檢視,不跑 Stage C")
@@ -103,7 +106,12 @@ def main() -> int:
             return 1
         jobs, extractor, kind = find_topics(args.input), extract_image_dir, "主題"
     elif args.pdf:
-        jobs, extractor, kind = find_pdfs(args.input), extract_pdf, "PDF"
+        fp = lp = None
+        if args.pages:
+            fp, lp = (int(x) for x in args.pages.split("-")) if "-" in args.pages else (int(args.pages), int(args.pages))
+        jobs = find_pdfs(args.input)
+        extractor = partial(extract_pdf, first_page=fp, last_page=lp)
+        kind = "PDF"
     else:
         jobs, extractor, kind = find_decks(args.input), extract, "deck"
 
