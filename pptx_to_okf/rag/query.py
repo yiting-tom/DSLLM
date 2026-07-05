@@ -14,10 +14,25 @@ from . import embed as _embed
 from .store import SqliteStore, Store
 
 
-def search(query: str, store: Store, k: int = 5,
-           embed_fn=_embed.embed_texts, where: dict | None = None) -> list[dict]:
+def search(query: str, store: Store, k: int = 5, embed_fn=_embed.embed_texts,
+           where: dict | None = None, expand: bool = False) -> list[dict]:
     qv = embed_fn([query])[0]
-    return store.topk(qv, k, where=where)
+    hits = store.topk(qv, k, where=where)
+    if not expand:
+        return hits
+    # graph 展開:沿命中概念的 related 補入鄰居(dedup、標 via_related)
+    seen = {h["id"] for h in hits}
+    extra = []
+    for h in hits:
+        for rid in (h["metadata"].get("related") or []):
+            if rid in seen:
+                continue
+            nb = store.get(rid)
+            if nb:
+                seen.add(rid)
+                nb = {**nb, "score": h["score"], "via_related": h["id"]}
+                extra.append(nb)
+    return hits + extra
 
 
 def _where_from_args(args) -> dict:
@@ -42,13 +57,15 @@ def main() -> int:
     ap.add_argument("--tag", action="append", help="tags 任一命中(可重複)")
     ap.add_argument("--no-low-confidence", action="store_true", help="排除低信心")
     ap.add_argument("--facts-only", action="store_true", help="排除衍生摘要(generated)")
+    ap.add_argument("--expand", action="store_true", help="graph 展開:沿 related 補入鄰居")
     args = ap.parse_args()
 
     store = SqliteStore(args.db)
-    for r in search(args.query, store, args.k, where=_where_from_args(args)):
+    for r in search(args.query, store, args.k, where=_where_from_args(args), expand=args.expand):
         m = r["metadata"]
         warn = "  ⚠️低信心" if m.get("confidence") == "low" else ""
-        print(f"[{r['score']:.3f}] ({m.get('type','?')}) {m.get('title','')}  <{m.get('id')}>{warn}")
+        via = f"  ↳via {r['via_related']}" if r.get("via_related") else ""
+        print(f"[{r['score']:.3f}] ({m.get('type','?')}) {m.get('title','')}  <{m.get('id')}>{warn}{via}")
         print(f"        來源 {m.get('resource','')}")
     return 0
 

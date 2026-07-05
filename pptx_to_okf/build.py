@@ -92,6 +92,34 @@ def write_bundle(deck_path: Path, concepts: list[dict], root: str | Path) -> lis
     return written
 
 
+def write_overview(root: str | Path, subpath: str, title: str, description: str,
+                   body: str, related: list[str], ts: str | None = None) -> Path:
+    """Phase 2:寫主題 Overview(衍生物)。同主題固定檔名覆寫 → 重跑更新不重複。"""
+    root = Path(root)
+    ts = ts or datetime.now(timezone.utc).isoformat(timespec="seconds")
+    body = (body or "").strip()
+    fm = {
+        "id": "ov_" + hashlib.sha1(subpath.encode("utf-8")).hexdigest()[:8],  # 隨主題穩定
+        "type": "Topic Overview",
+        "title": title,
+        "slug": "_overview",
+        "description": description,
+        "generated": True,                           # 衍生物,不污染真相
+        "content_hash": _content_hash(body),
+        "confidence": _confidence({}, body),
+        "resource": f"derived://{subpath}",
+        "provenance": [f"derived://{subpath} (summary of {len(related)} concepts)"],
+        "tags": [subpath, "overview"],
+        "related": list(related),                    # hub→成員 id
+        "model": config.LLM_MODEL,
+        "timestamp": ts,
+    }
+    out = root / subpath / "_overview.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(f"---\n{_frontmatter(fm)}\n---\n\n{body}\n", encoding="utf-8")
+    return out
+
+
 def append_log(root: str | Path, deck_name: str, n_concepts: int, ts: str) -> None:
     """OKF log.md:記錄每次轉換來源、時間與模型版本,供去重/追版本/可重現。"""
     log = Path(root) / "log.md"

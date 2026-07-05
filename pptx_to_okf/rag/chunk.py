@@ -10,9 +10,9 @@ import yaml
 
 RESERVED = {"index.md", "log.md"}
 
-# 帶進 metadata 供檢索過濾/加權的 frontmatter 欄位
+# 帶進 metadata 供檢索過濾/加權/graph 展開的 frontmatter 欄位
 META_KEYS = ("id", "type", "title", "slug", "tags", "confidence",
-            "generated", "resource", "provenance")
+            "generated", "resource", "provenance", "related")
 
 
 @dataclass

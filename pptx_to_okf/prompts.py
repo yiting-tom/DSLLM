@@ -125,3 +125,34 @@ def merge_user(concepts: list[dict]) -> str:
     for i, c in enumerate(concepts):
         lines.append(f"[{i}] ({c.get('type','')}) {c.get('title','')} — {c.get('description','')}")
     return "\n".join(lines)
+
+
+# ── Phase 2:主題摘要 ─────────────────────────────────────────────
+SUMMARY_SYSTEM = """你是半導體知識架構師。輸入是「同一主題」的多個 OKF 概念(標題+摘要+內容)。
+請綜合成一份**主題總覽(Overview)**,讓讀者(人或 agent)一眼掌握這個主題涵蓋什麼、彼此如何關聯。
+
+要求:
+- 用繁體中文;保留英文縮寫與專有名詞。
+- **只根據提供的成員概念**綜合,不得加入外部知識或推測(推測處標「(低信心)」)。
+- 開頭一段講這個主題是什麼、範圍;接著條列/串連各子概念的重點與關聯;避免逐字複製,要提煉。
+- 這是**衍生摘要**,供全局檢索用,不是新事實來源。
+
+**只輸出一個 JSON 物件**:
+{
+  "title": "主題總覽標題",
+  "description": "一句話說明這個主題涵蓋什麼",
+  "body_markdown": "## 總覽\\n..."
+}"""
+
+
+def summary_user(topic: str, members: list[dict]) -> str:
+    lines = [f"主題:{topic}(共 {len(members)} 個概念)\n"]
+    for m in members:
+        lines.append(f"### ({m.get('type','')}) {m.get('title','')}")
+        if m.get("description"):
+            lines.append(m["description"])
+        body = (m.get("body") or "").strip()
+        if body:
+            lines.append(body[:1200])          # 控長度,足夠提煉
+        lines.append("")
+    return "\n".join(lines)

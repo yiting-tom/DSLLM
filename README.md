@@ -130,6 +130,18 @@ python -m pptx_to_okf.eval.runner eval.yaml --db ./rag.db --fake   # 假 embedde
 ```
 `eval.yaml` 每題 `question` + `expect_ids`/`expect_keywords`;輸出 recall@k、逐題排名、低信心命中標註。真題由領域專家填。
 
+## Phase 2:主題摘要 + graph(全局/關係問題)
+
+```bash
+python -m pptx_to_okf.summarize ./bundle                      # 每主題生 Overview(generated)
+python -m pptx_to_okf.rag.ingest ./bundle --db ./rag.db       # Overview 一併 ingest
+python -m pptx_to_okf.rag.query "這主題整體涵蓋什麼" --db ./rag.db --expand
+```
+
+- **主題摘要**:每個子目錄綜合成一個 `_overview.md`(`generated: true`,衍生物,**不改成員真相**),回答全局問題;同主題固定檔名覆寫 → 重跑更新不重複。
+- **graph(hub-and-spoke)**:Overview 的 `related` 以 **id** 連到成員 → `--expand` 命中後沿連結帶出鄰居脈絡。
+- 只想查真相不要摘要:query 加 `--facts-only`。
+
 ## 待辦 / 已知限制
 
 - **關鍵數值需抽樣人工核對**:prompt 已要求低信心標註,vision 讀尺寸/bin map 仍會錯。

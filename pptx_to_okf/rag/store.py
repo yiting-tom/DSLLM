@@ -17,6 +17,7 @@ class Store(Protocol):
     def upsert(self, cid: str, content_hash: str, text: str, metadata: dict, vector: list[float]) -> None: ...
     def topk(self, vector: list[float], k: int,
              where: dict | None = None, exclude_id: str | None = None) -> list[dict]: ...
+    def get(self, cid: str) -> dict | None: ...
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -64,6 +65,14 @@ class SqliteStore:
             (cid, content_hash, text, json.dumps(metadata, ensure_ascii=False), json.dumps(vector)),
         )
         self.db.commit()
+
+    def get(self, cid: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT id, text, metadata FROM chunks WHERE id=?", (cid,)
+        ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "text": row[1], "metadata": json.loads(row[2])}
 
     def topk(self, vector: list[float], k: int = 5,
              where: dict | None = None, exclude_id: str | None = None) -> list[dict]:

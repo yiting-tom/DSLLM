@@ -176,8 +176,8 @@ flowchart TB
 | Phase | 做什麼 | 產出價值 | 狀態 |
 |---|---|---|---|
 | **0** | pptx→OKF 轉換 pipeline | 產出 OKF | ✅ 已建、已推 |
-| **1** | frontmatter 契約 + 扁平向量 RAG + facet;**append-only、不自動合併、疑似重複標旗標** | 點問題馬上能答,低債可重現 | ⬜ 下一步 |
-| **2** | id 連結 graph + 主題摘要(標 generated) | 全局/關係問題能答,粗細打通 | ⬜ |
+| **1** | frontmatter 契約 + 扁平向量 RAG + facet;**append-only、不自動合併、疑似重複標旗標** | 點問題馬上能答,低債可重現 | ✅ |
+| **2** | 主題摘要(generated)+ hub-and-spoke graph(Overview→成員 id)+ `--expand` | 全局/關係問題能答,粗細打通 | ✅ |
 | **3** | 增量策展迴路(寫入時 dedup/link + 局部重建) | 大量餵而庫不亂、持續長大 | ⬜ 前提:穩定 id + eval + 證實重複是問題 |
 
 > 降債關鍵:**危險的自動化(④⑤)往後推**。Phase 1 用 append-only 就把 ①②③⑤ 的債防掉、④ 靠延後避開。
@@ -198,6 +198,7 @@ flowchart TB
 | facet 過濾(type/tags/confidence/generated) | ✅ Phase 1 |
 | 疑似重複標旗標(唯讀,取代自動合併) | ✅ Phase 1 |
 | golden eval harness(recall@k、假 embedder 自測) | ✅ Phase 1(骨架;真題待領域專家) |
-| graph + 摘要 | ⬜ Phase 2 |
+| 主題摘要 Overview(generated,不改成員真相) | ✅ Phase 2 |
+| hub-and-spoke graph(Overview→成員 id)+ `--expand` 展開檢索 | ✅ Phase 2 |
 | 增量策展迴路 | ⬜ Phase 3 |
 | HITL 補洞 | ⬜ |
