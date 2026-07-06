@@ -4,6 +4,8 @@
 
 專為「**沒講者備註、內容多是截圖/圖形拼成的解釋圖**」的 deck 設計 → vision 為主,python-pptx 只當校正錨點。
 
+📄 文件:[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)(設計/技術債/分階段)· [`docs/ALGORITHMS.md`](docs/ALGORITHMS.md)(逐階段演算法細節)
+
 ## 架構:densify → cluster → synthesize → merge
 
 ```
