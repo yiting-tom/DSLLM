@@ -33,7 +33,8 @@ def ingest(bundle_root: str | Path, store: Store, embed_fn=_embed.embed_texts,
         vectors = embed_fn([c.text for c in batch])
         for c, v in zip(batch, vectors):
             # 比對「當下庫」(含本批已 upsert 者)→ 抓庫內與批內重複
-            near = store.topk(v, 1, exclude_id=c.id)
+            # 衍生物(摘要)本來就該像成員,不納入重複偵測(否則必誤報)
+            near = None if c.metadata.get("generated") else store.topk(v, 1, exclude_id=c.id)
             if near and near[0]["score"] >= dedup_threshold:
                 flags.append({
                     "new_id": c.id, "new_title": c.metadata.get("title", ""),
