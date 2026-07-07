@@ -81,6 +81,7 @@ densify(deck) -> {slide_index: dump_text}
 
 - `densify_user`:文字區塊(標題/檔案抽到的文字當錨點/表格/備註)+ 該 slide 全部 `image_uris()`(密集頁多塊一起餵)。
 - **紀律**:只描述畫面實際內容、不腦補;看不清數值標「(低信心,需人工核對)」。
+- **表格規則**(densify + synthesize 兩處 prompt):空白 cell 保留 `—`、禁補值/推測、逐欄對齊不左移、看不清標 `?`、不腦補撐滿、合併格照原樣——治「空格被補值/錯位」的 VLM 讀表通病(pptx 走精確 cell 不受影響)。
 - 平行度受 `MAX_CONCURRENCY`(8);vision 呼叫走 IO,ThreadPool 即可。
 
 ---
