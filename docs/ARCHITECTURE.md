@@ -124,6 +124,31 @@ flowchart LR
 - **摘要**:每個主題目錄自動生 overview concept(答全局問題)
 - **線上小模型**:未定,Qwen3-14B/32B-Instruct(要帶投影片圖再上 VL)
 
+### 5.1 查詢者分兩種:小模型走 router,agent 走工具組
+
+上圖的 router 是為**線上小模型**設計的——一次檢索、一次作答,route 誤判就答錯。
+**agent 能多輪、能自我修正,route 的決策權還給 agent**;我們只暴露正交的小工具(MCP / function calling):
+
+| 工具 | 對應層 |
+|---|---|
+| `okf_search(query, type?, tags?, confidence?)` | hybrid 向量 + facet 過濾 |
+| `okf_get(id)` | 讀單一 concept 全文 |
+| `okf_neighbors(id, depth?)` | 沿 `related` 擴張(graph) |
+| `okf_overview(topic?)` | 階層摘要 + index 地圖 |
+
+模式 = codegraph / memory 系統:**先看地圖 → 鑽細節 → 錯了自己重查**。固定 router 的誤判是死的,agent loop 的誤判可以自我修正。三層(向量/graph/摘要)不變,只是**同一套索引、兩個消費介面**。
+
+現況:`rag.query` CLI 已具 search(facet)+ `--expand`(≈ neighbors);缺 `get`/`overview` 與 MCP 化。
+
+### 5.2 量上升後保「快速準確」的四個槓桿
+
+| # | 槓桿 | 為什麼 | 何時 |
+|---|---|---|---|
+| ① | **入口地圖(progressive disclosure)**:每主題自動生 index(一行一 concept:`id · type · title · 一句 description`),agent 第一步先讀 index 不盲搜;量到數千再分層(global index 列主題 → 主題 index 列 concept) | 幾百個 concept 時比向量搜還準;就是 memory 系統 MEMORY.md 的模式放大 | ⬜ Phase 2.5 |
+| ② | **hybrid 檢索(dense + sparse),不用純向量** | 半導體域滿是 embedding 讀不好的 token(JEDEC 編號、材料代號、尺寸值、中英夾雜術語);純向量在精確術語上**靜默漏、量越大越漏**;bge-m3 天生出雙訊號、Qdrant 原生支援,成本近零 | ⬜ Phase 2.5 |
+| ③ | **facet 先砍、向量後排**:`type`/`tags`/`confidence` 先把候選集過濾一個數量級 | frontmatter 契約(§3)就是為這準備的;也是 `confidence: low` 檢索降權的掛載點 | ✅(`rag.query` where) |
+| ④ | **reranker 收尾**:bge-reranker(self-host)對 top-50 重排 → top-5 | 量大後 top-k 混入「近似但不對」的 concept;accuracy 提升通常大於換 embedding 模型 | ⬜ Phase 2.5,eval 量測後定 |
+
 ---
 
 ## 6. 增量策展迴路(「一點一點建立」)
@@ -178,6 +203,7 @@ flowchart TB
 | **0** | pptx→OKF 轉換 pipeline | 產出 OKF | ✅ 已建、已推 |
 | **1** | frontmatter 契約 + 扁平向量 RAG + facet;**append-only、不自動合併、疑似重複標旗標** | 點問題馬上能答,低債可重現 | ✅ |
 | **2** | 主題摘要(generated)+ hub-and-spoke graph(Overview→成員 id)+ `--expand` | 全局/關係問題能答,粗細打通 | ✅ |
+| **2.5** | **agent 檢索介面 + 量上升槓桿(§5.1–5.2)**:golden eval **真題**先行(骨架已有)→ hybrid(dense+sparse)→ 工具組 MCP 化(補 `get`/`overview`)+ index 地圖 → reranker(依 eval 定) | OKF 量上升後 agent 仍能快速準確查到;每個檢索改動有 recall@k 可量 | ⬜ 下一步 |
 | **3** | 增量策展迴路(寫入時 dedup/link + 局部重建) | 大量餵而庫不亂、持續長大 | ⬜ 前提:穩定 id + eval + 證實重複是問題 |
 
 > 降債關鍵:**危險的自動化(④⑤)往後推**。Phase 1 用 append-only 就把 ①②③⑤ 的債防掉、④ 靠延後避開。
@@ -200,5 +226,9 @@ flowchart TB
 | golden eval harness(recall@k、假 embedder 自測) | ✅ Phase 1(骨架;真題待領域專家) |
 | 主題摘要 Overview(generated,不改成員真相) | ✅ Phase 2 |
 | hub-and-spoke graph(Overview→成員 id)+ `--expand` 展開檢索 | ✅ Phase 2 |
+| golden eval **真題** | ⬜ **Phase 2.5 前置**(骨架已有,缺領域真題) |
+| hybrid 檢索(dense+sparse) | ⬜ Phase 2.5 |
+| agent 工具組 MCP 化(§5.1;補 `get`/`overview`)+ index 地圖 | ⬜ Phase 2.5 |
+| reranker | ⬜ Phase 2.5,eval 量測後定 |
 | 增量策展迴路 | ⬜ Phase 3 |
 | HITL 補洞 | ⬜ |
