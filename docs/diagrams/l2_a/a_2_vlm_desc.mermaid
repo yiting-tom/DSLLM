@@ -1,0 +1,41 @@
+flowchart TD
+
+IN["figures/*.png<br/>+ figures.json<br/>(figure_id / section_id / caption)"] --> PRE
+
+subgraph FILTER["前置過濾(省 VLM 成本)"]
+    PRE{"圖片分類<br/>(輕量 heuristic 或小模型)"}
+    PRE -->|"裝飾圖 / logo / 底圖<br/>(尺寸過小 / 純色佔比高)"| SKIP["標記 skip_reason<br/>不進 VLM、不進 vdb"]
+    PRE -->|"內容圖<br/>(chart / wafer map / 流程圖 / 照片)"| CTX
+end
+
+subgraph PROMPT["Prompt 組裝"]
+    CTX["讀取上下文:<br/>doc_title(檔名或首頁標題)<br/>section_title(figures.json)<br/>figure_id / caption<br/>該 section 前後文字 200 字"] --> TPL["套用 A2 描述 prompt 模板<br/>(數據結論式,四項必含:<br/>監控對象 / 數據行為<br/>/ 事件標記 / 可讀數值)"]
+end
+
+TPL --> CALL["VLM 推論<br/>(vLLM serving,batch 處理)"]
+
+CALL --> QC{"產出品質檢核"}
+
+subgraph QCHECK["QC 規則(程式檢核)"]
+    QC -->|"長度 < 30 字"| RETRY
+    QC -->|"含禁用模糊詞:<br/>某參數 / 某時間 / 似乎"| RETRY
+    QC -->|"含外觀詞但無結論:<br/>僅顏色線條座標描述"| RETRY
+    QC -->|"通過"| NORM
+end
+
+RETRY["重試(調 temperature<br/>+ 附上失敗原因)<br/>最多 2 次"] --> CALL
+RETRY -->|"重試耗盡"| FALLBACK["降級:存 caption + 前後文<br/>作為描述,標記<br/>desc_quality: fallback<br/>記入 review 清單"]
+
+NORM["→ A4 正規化<br/>(alias → canonical)"] --> OUT
+
+subgraph OUT["輸出"]
+    O1["figures/{figure_id}.desc.md<br/>---<br/>figure_id / section_id<br/>desc_quality: vlm | fallback<br/>---<br/>描述正文"]
+end
+
+O1 --> C1["→ C1:與 doc_title/section<br/>拼接後 embedding"]
+FALLBACK --> O1
+SKIP --> LOG["skip log(供抽查<br/>過濾規則是否誤殺)"]
+
+style RETRY fill:#fff3e0
+style FALLBACK fill:#fde0e0
+style SKIP fill:#f0f0f0

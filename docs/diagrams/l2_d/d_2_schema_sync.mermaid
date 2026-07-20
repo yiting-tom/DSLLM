@@ -1,0 +1,38 @@
+flowchart TD
+
+subgraph SSOT["schema.yaml(單一事實來源,版控於 repo)"]
+    S1["fields:<br/>- name: process_station<br/>  type: array[enum]<br/>  enum_source: vocabulary#process_station<br/>  required: true<br/>- name: doc_type<br/>  type: enum<br/>  values: [SOP, 異常分析報告, 週報, ...]<br/>- name: date_range<br/>  type: date_range<br/>- name: tool / defect_modes / ...<br/>schema_ver: v1"]
+end
+
+S1 --> GEN["codegen / 載入層<br/>(單一 parser 模組,<br/>四個消費者 import 同一份)"]
+
+subgraph CONSUMERS["四個消費者"]
+    GEN --> C1["A1:front matter<br/>欄位定義與驗證規則"]
+    GEN --> C2["B1:INDEX.md entry<br/>模板欄位 + B2 sanity check<br/>的 schema 合規檢核"]
+    GEN --> C3["C4:vdb payload<br/>欄位定義 + 寫入驗證"]
+    GEN --> C4["D0/D1:MCP tool 的<br/>filter 參數 JSON schema<br/>+ 錯誤訊息中的欄位清單"]
+end
+
+subgraph CHANGE["schema 改版流程"]
+    CH1["修改 schema.yaml<br/>schema_ver 升版<br/>(PR review)"] --> CH2{"變更類型?"}
+    CH2 -->|"新增選填欄位<br/>(向後相容)"| CH3["直接發布:<br/>新 bundle 開始帶新欄位<br/>舊資料查詢時該欄位視為空"]
+    CH2 -->|"必填欄位 / 枚舉值變更<br/>(破壞性)"| CH4["依序執行:<br/>1. A pipeline 更新<br/>2. C 批次回填<br/>(c_4 的 schema 改版路徑)<br/>3. B2 手動觸發全量重建<br/>4. MCP tool schema 熱更新"]
+    CH4 --> CH5{"回填完成驗證:<br/>ledger 中全部 bundle<br/>schema_ver == 新版?"}
+    CH5 -->|"否"| CH6["未完成前 MCP filter<br/>對新欄位標記 partial<br/>(回應中警示 Kimi<br/>結果可能不完整)"]
+    CH5 -->|"是"| CH7["改版完成"]
+end
+
+subgraph ENUM["枚舉值與 A4 的關係"]
+    E1["站點 / 機台 / defect 類<br/>欄位的合法值 =<br/>vocabulary.yaml 中<br/>對應 category 的 canonical"] --> E2["vocabulary 新增術語<br/>不需改 schema<br/>(enum_source 動態引用)"]
+end
+
+E1 -.-> S1
+
+subgraph RULE["核心約定"]
+    R1["任何人不得在單一消費者<br/>私自加欄位——<br/>必須進 schema.yaml"]
+    R2["B1 entry 與 C4 payload<br/>的欄位語意完全等價<br/>= 索引導航結果與 filter<br/>結果永遠可互相印證"]
+end
+
+style CH4 fill:#fff3e0
+style CH6 fill:#fde0e0
+style CH7 fill:#e8f4e8

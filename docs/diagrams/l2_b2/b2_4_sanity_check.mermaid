@@ -1,0 +1,29 @@
+flowchart TD
+
+IN["輸入:new_dir(新版)<br/>old_dir(current 指向的舊版)<br/>error_report.json"] --> CK1
+
+CK1{"檢核 1:數量守恆<br/>entry_count(new)<br/>== bundle_count - error 數?"}
+CK1 -->|"否"| FAIL["回傳 False<br/>附上失敗檢核項與差異明細<br/>→ 區塊 3 走保留舊版路徑"]
+CK1 -->|"是"| CK2
+
+CK2{"檢核 2:防大幅縮水<br/>entry_count(new) >=<br/>entry_count(old) × 0.98?<br/>(掃描失敗的訊號)"}
+CK2 -->|"否"| FAIL
+CK2 -->|"是"| CK3
+
+CK3{"檢核 3:schema 合規<br/>逐 entry 檢查:<br/>必填欄位齊全<br/>術語皆為 canonical<br/>日期格式合法"}
+CK3 -->|"任一 entry 不合規"| FAIL
+CK3 -->|"全部通過"| CK4
+
+CK4{"檢核 4:抽樣一致性<br/>隨機抽 10 個 entry<br/>反查對應 bundle 的 front matter<br/>欄位值逐一比對"}
+CK4 -->|"任一不一致"| FAIL
+CK4 -->|"一致"| CK5
+
+CK5{"檢核 5:TOPICS.md 引用驗證<br/>解析 TOPICS.md 中所有 doc_id<br/>逐一確認 bundle 真實存在<br/>(擋 LLM 幻覺,最重要)"}
+CK5 -->|"存在幻覺 doc_id"| FAIL
+CK5 -->|"全部存在"| PASS["回傳 True<br/>→ 區塊 3 執行 symlink 切換"]
+
+FAIL --> LOG["失敗明細寫入<br/>new_dir/sanity_failures.json<br/>供除錯"]
+
+style PASS fill:#e8f4e8
+style FAIL fill:#fde0e0
+style CK5 fill:#fff3e0

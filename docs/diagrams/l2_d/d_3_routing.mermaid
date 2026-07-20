@@ -1,0 +1,46 @@
+flowchart TD
+
+Q["工程師提問"] --> PRE["Kimi 前置分析:<br/>抽取問題中的實體<br/>(站點 / 機台 / 參數 / 時間)<br/>與意圖動詞"]
+
+PRE --> D1{"判斷一:<br/>問『數量 / 全部清單』?<br/>(幾份 / 列出所有 / 哪些文件)"}
+D1 -->|"是"| ROUTE_E["filter_documents<br/>(mode 依問法選 count / list)"]
+
+D1 -->|"否"| D2{"判斷二:<br/>指名特定文件 / SOP<br/>/ 已知 doc_id?"}
+D2 -->|"是"| ROUTE_N["read_index 定位<br/>→ read_bundle 直讀"]
+
+D2 -->|"否"| D3{"判斷三:<br/>綜觀 / 趨勢 / 總結類?<br/>(近期整體 / 歷來經驗彙整)"}
+D3 -->|"是"| ROUTE_P["filter_documents(list) 圈範圍<br/>→ 逐份 read_bundle(summary)<br/>→ 不足處 hybrid_search 補"]
+
+D3 -->|"否"| D4{"判斷四:<br/>含精確代號且問法具體?<br/>(機台編號 / defect code<br/>/ 參數名 + 明確事件)"}
+D4 -->|"是"| ROUTE_H["hybrid_search<br/>帶 filters(實體轉條件)"]
+D4 -->|"否"| ROUTE_S["hybrid_search 不帶 filter<br/>(語意探索)"]
+
+subgraph LOOP["檢索後自我評估迴圈(每輪必做)"]
+    ROUTE_H --> EV
+    ROUTE_S --> EV
+    ROUTE_N --> EV
+    ROUTE_P --> EV
+    ROUTE_E --> EV
+    EV{"結果足以回答?<br/>(覆蓋問題全部子面向<br/>+ 無 low_confidence 旗標)"}
+    EV -->|"是"| ANS["進入回答組合(d_4)"]
+    EV -->|"否,已達 4 輪上限"| PARTIAL["坦白告知:<br/>找到的部分 + 缺什麼<br/>+ 建議人工查找方向<br/>(絕不硬編答案)"]
+    EV -->|"否,未達上限"| RETRY{"失敗原因判斷"}
+    RETRY -->|"結果相關但不完整"| R1["拆子問題分別檢索"]
+    RETRY -->|"結果不相關"| R2["改寫 query:<br/>換 canonical 術語<br/>/ 放寬或移除 filter"]
+    RETRY -->|"low_confidence<br/>且含精確代號"| R3["fallback: grep_bundles<br/>關鍵字精確掃描"]
+    RETRY -->|"filter 後零結果"| R4["依 tool 回傳的<br/>放寬建議逐步鬆綁"]
+    R1 --> EV2["重新發起檢索<br/>(輪次 +1)"]
+    R2 --> EV2
+    R3 --> EV2
+    R4 --> EV2
+    EV2 --> EV
+end
+
+subgraph PROMPTNOTE["skill prompt 撰寫要點(開發參考)"]
+    P1["決策樹以規則 + 各 2 個<br/>正反例句寫入 prompt<br/>(例句用真實 YED 問法)"]
+    P2["明訂輪次上限與<br/>PARTIAL 的誠實回答格式"]
+    P3["要求每次 tool call 前<br/>先以一句話說明選擇理由<br/>(便於 E2 分析路由錯誤)"]
+end
+
+style PARTIAL fill:#fff3e0
+style ANS fill:#e8f4e8

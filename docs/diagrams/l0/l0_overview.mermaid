@@ -1,0 +1,68 @@
+flowchart TD
+
+subgraph SRC["原始文件"]
+    DOCS["pptx / pdf / docx"]
+end
+
+subgraph A["A:OKF 轉換 Pipeline(建置時)"]
+    CONV["格式解析 → 描述化 → 正規化<br/>→ SUMMARY.md → OKF Bundle"]
+end
+
+DOCS --> CONV
+
+subgraph STORE["知識儲存層"]
+    BUNDLES[("OKF Bundles<br/>(檔案系統)")]
+    VDB[("Vector DB<br/>dense + BM25 + payload")]
+end
+
+CONV --> BUNDLES
+
+subgraph B["B:階層式索引 Pipeline(建置時)"]
+    IDX["INDEX.md(固定 schema)<br/>TOPICS.md(跨 bundle 關聯)<br/>定期全量重建(B2)"]
+end
+
+subgraph C["C:Hybrid RAG Pipeline(建置時)"]
+    ING["chunk 帶上下文 embedding<br/>+ metadata payload 寫入"]
+end
+
+BUNDLES --> IDX
+BUNDLES --> ING
+ING --> VDB
+
+IDX -.->|"D2:schema 欄位<br/>共用同一份定義"| ING
+
+subgraph D["D:整合層 / MCP Tools(查詢時)"]
+    ROUTER["Kimi query router<br/>(D3 策略)"]
+    TOOL_IDX["tool: 階層索引導航"]
+    TOOL_RAG["tool: hybrid 檢索<br/>(dense + BM25 + RRF + rerank)"]
+    TOOL_FIL["tool: metadata filter<br/>(D1 列舉查詢)"]
+    TOOL_FS["tool: grep / 讀檔<br/>(agentic fallback)"]
+end
+
+USER["YED 工程師提問"] --> ROUTER
+ROUTER --> TOOL_IDX
+ROUTER --> TOOL_RAG
+ROUTER --> TOOL_FIL
+ROUTER --> TOOL_FS
+
+TOOL_IDX --> IDX
+TOOL_RAG --> VDB
+TOOL_FIL --> VDB
+TOOL_FS --> BUNDLES
+
+TOOL_IDX --> ANS["組合回答<br/>+ 出處標注(D4:<br/>檔案 + 章節/圖表編號)"]
+TOOL_RAG --> ANS
+TOOL_FIL --> ANS
+TOOL_FS --> ANS
+ANS --> USER
+
+subgraph E["E:評估體系(貫穿)"]
+    QA["golden QA set(E1)<br/>自動化評估(E2)<br/>失敗分佈 → 二階段決策(E3)"]
+end
+
+ANS -.->|"回答品質"| QA
+QA -.->|"改動回饋"| A
+QA -.->|"改動回饋"| C
+
+style D fill:#e8f0fe
+style E fill:#fef7e0

@@ -1,0 +1,42 @@
+flowchart TD
+
+START["rebuild job 啟動<br/>建立新版本目錄 v{timestamp}"] --> SCAN
+
+subgraph STEP1["Step 1:掃描(純程式)"]
+    SCAN["discover_bundles()<br/>遍歷 bundles_root<br/>找出所有 OKF bundle"] --> PARSE["parse_front_matter()<br/>讀取每個 SUMMARY.md<br/>的 YAML front matter"]
+end
+
+PARSE --> VAL
+
+subgraph STEP2["Step 2:驗證與正規化(純程式)"]
+    VAL{"逐筆檢查:<br/>必填欄位齊全?<br/>日期格式正確?<br/>術語為 canonical?"}
+    VAL -->|"通過"| METAS["加入 metas 清單"]
+    VAL -->|"欄位缺失 / 格式錯"| ERR["寫入 error_report<br/>(doc_id + 錯誤原因)<br/>此 bundle 不進 index"]
+    VAL -->|"術語非 canonical<br/>但在 alias 表中"| FIX["自動正規化後<br/>加入 metas<br/>並記 warning"]
+    FIX --> METAS
+end
+
+METAS --> GROUP
+
+subgraph STEP3["Step 3:確定性分層(純程式)"]
+    GROUP["group_by()<br/>第一層 key: process_station<br/>第二層 key: doc_type"] --> SORT["各組內依 date_range<br/>降冪排序"]
+end
+
+SORT --> RENDER
+
+subgraph STEP4["Step 4:模板渲染(純程式,零 LLM)"]
+    RENDER["Jinja2 模板 index_entry.j2<br/>逐層渲染 INDEX.md"] --> FILES["輸出:<br/>根目錄 INDEX.md(站點總覽)<br/>各站點目錄 INDEX.md<br/>(該站點所有 entry)"]
+end
+
+FILES --> LLM
+
+subgraph STEP5["Step 5:TOPICS.md(唯一 LLM call)"]
+    LLM["llm_generate_topics(metas)<br/>輸入:全部 front matter<br/>(不含全文)"] --> TOPICS["產出 TOPICS.md<br/>跨 bundle 主題聚類<br/>每個 topic 列出 doc_id 清單"]
+end
+
+TOPICS --> OUT["新版本目錄完成:<br/>v{timestamp}/<br/>├── INDEX.md(各層)<br/>├── TOPICS.md<br/>└── error_report.json"]
+
+OUT --> NEXT["→ 進入區塊 4:sanity check"]
+
+style STEP5 fill:#fff3e0
+style LLM fill:#ffe0b2

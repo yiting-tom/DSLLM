@@ -1,0 +1,38 @@
+flowchart TD
+
+IN["候選 top-50<br/>(來自 c_2 RRF)"] --> PREP
+
+subgraph C3["C3:cross-encoder rerank"]
+    PREP["組 (query, embed_text) 對<br/>× 50,batch 送入<br/>BGE-reranker-v2-m3<br/>(GPU serving)"] --> SCORE["逐對相關性打分"]
+    SCORE --> CUT["依分數排序取 top_k<br/>(預設 8)"]
+    CUT --> TH{"最高分 < 門檻?<br/>(低信心判定)"}
+    TH -->|"是"| LOW["結果照回傳,但附<br/>low_confidence: true<br/>(提示 Kimi 考慮改寫<br/>query 或走 grep fallback)"]
+    TH -->|"否"| RESOLVE
+    LOW --> RESOLVE
+end
+
+subgraph RES["結果解析(回答前處理)"]
+    RESOLVE["逐筆依 content_kind 處理"] --> RK{"content_kind?"}
+    RK -->|"table_desc"| RT["由 payload.linked_table<br/>讀 bundle 內 raw markdown<br/>attach 於該筆結果<br/>(供精確數值引用)"]
+    RK -->|"fig_desc"| RF["attach 出處資訊:<br/>okf_id + figure_id<br/>+ section_title"]
+    RK -->|"text"| RX["attach 出處資訊:<br/>okf_id + section_id"]
+    RT --> DEDUP
+    RF --> DEDUP
+    RX --> DEDUP
+    DEDUP["同 bundle 相鄰 chunk 合併<br/>(section 內連續命中<br/>拼回完整脈絡)"] --> FMT
+end
+
+subgraph OUT["回傳格式(MCP tool response)"]
+    FMT["results: [{<br/>  text, score,<br/>  citation: {okf_id, doc_title,<br/>    section/figure/table id},<br/>  raw_table?(若有)<br/>}]<br/>meta: {low_confidence?,<br/>  applied_filters, total_candidates}"]
+end
+
+FMT --> KIMI["→ Kimi 組合回答<br/>citation 欄位直接服務 D4<br/>出處標注"]
+
+subgraph FUTURE["中期演進(備註)"]
+    FU1["查詢 log 累積後:<br/>rerank 分數 + 使用者採納<br/>→ embedding 微調的<br/>正負樣本來源"]
+    FU2["rerank 延遲敏感時:<br/>候選降至 top-30<br/>或改 int8 量化模型"]
+end
+
+style TH fill:#fff3e0
+style LOW fill:#fff3e0
+style DEDUP fill:#e8f4e8

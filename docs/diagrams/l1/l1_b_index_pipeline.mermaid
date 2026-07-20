@@ -1,0 +1,41 @@
+flowchart TD
+
+IN[("bundles_root/<br/>全部 OKF Bundle")] --> SCAN["掃描 bundle<br/>讀取 SUMMARY.md<br/>front matter(純程式)"]
+
+subgraph B1["B1:固定 schema entry 生成"]
+    SCAN --> VAL{"欄位驗證:<br/>必填齊全 / canonical 術語<br/>/ 日期格式"}
+    VAL -->|"不合規"| ERR["error_report<br/>不進 index"]
+    VAL -->|"通過"| ENTRY["生成 entry(模板渲染):<br/>doc_id / 站點 / 機台<br/>defect 類型 / 時間範圍<br/>關鍵詞(原文抽取)<br/>禁止自由摘要"]
+end
+
+subgraph LAYER["階層組織(確定性程式)"]
+    ENTRY --> L1["第一層:process_station<br/>(CMP / Etch / Litho / ...)"]
+    L1 --> L2["第二層:doc_type<br/>(SOP / 異常分析 / 週報 / ...)"]
+    L2 --> L3["第三層:entry 清單<br/>依 date_range 降冪"]
+    L3 --> IDXFILES["各層 INDEX.md 輸出<br/>根目錄:站點總覽<br/>站點目錄:完整 entry"]
+end
+
+subgraph B3["B3:TOPICS.md(唯一 LLM call)"]
+    ENTRY --> TGEN["llm_generate_topics()<br/>輸入:全部 front matter<br/>聚類共享機台 / defect mode<br/>/ 製程模組的 bundle"]
+    TGEN --> TFILE["TOPICS.md:<br/>topic 名稱 + 描述<br/>+ 所屬 doc_id 清單"]
+end
+
+subgraph B2["B2:重建與發布(細節見 b2_1~b2_5 五張圖)"]
+    IDXFILES --> VER["寫入新版本目錄<br/>v{timestamp}/"]
+    TFILE --> VER
+    ERR --> VER
+    VER --> SC{"sanity check<br/>五道檢核"}
+    SC -->|"通過"| SWAP["symlink 原子切換<br/>current → 新版"]
+    SC -->|"失敗"| KEEP["保留舊版 + 告警"]
+    SWAP --> REPORT["rebuild report<br/>(diff / vocab miss / 趨勢)"]
+end
+
+TRIG["觸發:計數 / cron / 手動<br/>(見 b2_1)"] -.-> SCAN
+
+SWAP --> SERVE[("current/<br/>供 MCP tool 讀取")]
+SERVE -.->|"D 整合層的<br/>索引導航 tool"| D["→ D pipeline"]
+REPORT -.->|"vocab miss 回填"| A4["→ A4 vocabulary.yaml"]
+
+style B3 fill:#fff3e0
+style SWAP fill:#e8f4e8
+style KEEP fill:#fde0e0

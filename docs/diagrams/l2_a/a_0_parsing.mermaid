@@ -1,0 +1,55 @@
+flowchart TD
+
+IN["輸入文件"] --> DET{"副檔名 / magic bytes<br/>判斷格式"}
+
+DET -->|"pptx"| PP["python-pptx 解析"]
+DET -->|"docx"| DX["python-docx 解析"]
+DET -->|"pdf"| PDFT{"文字層存在?<br/>(pdfplumber 抽測前 3 頁)"}
+DET -->|"其他 / 損毀"| REJ["寫入 ingest_errors.json<br/>(檔名 + 原因)通知人工處理"]
+
+PDFT -->|"是(原生 PDF)"| PD["pdfplumber 解析"]
+PDFT -->|"否(掃描檔)"| OCR["先 OCR(繁中模型)<br/>再進 pdfplumber 流程<br/>標記 source_quality: ocr"]
+OCR --> PD
+
+subgraph PPTX["pptx 抽取規則"]
+    PP --> PP1["每張 slide = 一個 section<br/>section_title = slide 標題框"]
+    PP --> PP2["圖片:shape type = picture<br/>匯出原圖 + 記錄 slide 編號"]
+    PP --> PP3["表格:shape type = table<br/>轉 markdown + 記錄 slide 編號"]
+    PP --> PP4["speaker notes 一併抽出<br/>附掛於該 slide section"]
+end
+
+subgraph DOCX["docx 抽取規則"]
+    DX --> DX1["以 Heading 樣式切 section<br/>section_title = 標題文字"]
+    DX --> DX2["inline / floating 圖片匯出<br/>記錄所屬 section"]
+    DX --> DX3["w:tbl 轉 markdown<br/>記錄所屬 section"]
+end
+
+subgraph PDF["pdf 抽取規則"]
+    PD --> PD1["以字級 / 粗體啟發式<br/>辨識標題切 section<br/>失敗則以頁為 section"]
+    PD --> PD2["嵌入圖與向量圖<br/>整區 rasterize 匯出"]
+    PD --> PD3["表格:pdfplumber<br/>extract_tables → markdown<br/>格線缺失時整表<br/>rasterize 改走 A2 圖片路徑"]
+end
+
+PP1 --> IR
+PP4 --> IR
+DX1 --> IR
+PD1 --> IR
+PP2 --> IRIMG
+DX2 --> IRIMG
+PD2 --> IRIMG
+PP3 --> IRTBL
+DX3 --> IRTBL
+PD3 --> IRTBL
+
+subgraph OUT["中間表示(IR)輸出"]
+    IR["sections.json<br/>[{section_id, title,<br/>order, text}]"]
+    IRIMG["figures/*.png +<br/>figures.json<br/>[{figure_id, section_id,<br/>caption?}]"]
+    IRTBL["tables.json<br/>[{table_id, section_id,<br/>markdown, extract_quality}]"]
+end
+
+IR --> NEXT["→ A4 正規化(文字路)"]
+IRIMG --> NEXT2["→ A2 描述化(圖片路)"]
+IRTBL --> NEXT3["→ A3 雙軌(表格路)"]
+
+style REJ fill:#fde0e0
+style OCR fill:#fff3e0

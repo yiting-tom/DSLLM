@@ -1,0 +1,44 @@
+flowchart TD
+
+subgraph VOCAB["vocabulary.yaml 維護"]
+    V1[("vocabulary.yaml<br/>terms:<br/>- canonical / aliases[]<br/>/ category")] --> V2["載入時驗證:<br/>canonical 不重複<br/>alias 不跨 term 衝突<br/>(衝突即 build fail)"]
+    V2 --> V3["編譯 alias → canonical<br/>對照表 + 預編譯 regex<br/>(長 alias 優先匹配,<br/>避免子字串誤替換)"]
+end
+
+subgraph WRITE["寫入端:normalize()(A pipeline 內)"]
+    W0["輸入文字:<br/>section 文字 / 圖表描述<br/>/ 表格描述"] --> W1["逐條 regex 替換<br/>alias → canonical<br/>(詞界處理:中文直接匹配、<br/>英文加 word boundary)"]
+    W1 --> W2["保護區跳過:<br/>code block / 原始表格<br/>markdown 不替換<br/>(raw table 保持原樣)"]
+    W2 --> W3["輸出正規化文字"]
+end
+
+V3 --> W1
+
+subgraph MISS["vocab miss 偵測"]
+    W3 --> M1["疑似術語掃描:<br/>全大寫縮寫 2~6 字<br/>/ 中英混合詞<br/>/ 高頻未知名詞"]
+    M1 --> M2{"已在 vocabulary<br/>(canonical 或 alias)?"}
+    M2 -->|"否"| M3["寫入 vocab_miss.log<br/>(詞 + 出現次數 + 出處 doc_id)"]
+    M2 -->|"是"| M4["略過"]
+    M3 --> M5["B2 rebuild report 彙整<br/>→ 人工審核回填 vocabulary<br/>→ 手動觸發全量重建"]
+end
+
+M5 -.->|"閉環"| V1
+
+subgraph QUERYSIDE["查詢端:expand()(C pipeline 查詢時)"]
+    Q1["使用者 query"] --> Q2["斷詞後逐詞查對照表"]
+    Q2 --> Q3{"命中 canonical<br/>或 alias?"}
+    Q3 -->|"是"| Q4["BM25 query 展開:<br/>該詞 → (canonical OR<br/>alias1 OR alias2 ...)"]
+    Q3 -->|"否"| Q5["原詞照用"]
+    Q4 --> Q6["dense 路:原句不展開<br/>BM25 路:展開後 query"]
+    Q5 --> Q6
+end
+
+V3 --> Q2
+
+subgraph RULE["核心原則(開發約定)"]
+    R1["寫入端收斂:<br/>儲存一律 canonical"]
+    R2["查詢端展開:<br/>檢索涵蓋全部 aliases"]
+    R3["front matter / index /<br/>vdb payload 三處欄位值<br/>一律 canonical(D2 前提)"]
+end
+
+style M5 fill:#fff3e0
+style V2 fill:#e8f4e8

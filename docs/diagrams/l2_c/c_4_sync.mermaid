@@ -1,0 +1,42 @@
+flowchart TD
+
+subgraph EVENTS["事件來源"]
+    E1["bundle_created<br/>(A1 打包完成)"]
+    E2["bundle_updated<br/>(bundle 重轉 / 修補<br/>front matter 後)"]
+    E3["bundle_deleted<br/>(文件下架 / 作廢)"]
+    E4["schema 改版<br/>(schema_ver 升版)"]
+end
+
+E1 --> ING["走 c_1_4 寫入流程"]
+
+E2 --> UPD["先刪後寫:<br/>delete by filter<br/>(payload.okf_id == 該 bundle)<br/>→ 重跑 c_0 + c_1_4"]
+UPD --> UV{"驗證:新 point 數<br/>== 新 chunk 數<br/>且無舊 chunk_id 殘留"}
+UV -->|"失敗"| UAL["告警 + 標記該 bundle<br/>sync_status: dirty"]
+UV -->|"通過"| ULOG["更新 ingest_ledger"]
+
+E3 --> DEL["delete by filter<br/>(okf_id)"] --> DV{"驗證:該 okf_id<br/>point 數 == 0"}
+DV -->|"否"| DAL["重試刪除 → 告警"]
+DV -->|"是"| DLOG["ledger 標記 deleted<br/>+ 通知 B pipeline<br/>(下次重建自動排除)"]
+
+E4 --> MIG["批次回填:<br/>ledger 中 schema_ver < 新版<br/>的 bundle 逐一走 E2 路徑<br/>(限流,避免打爆 embedding 服務)"]
+
+subgraph RECON["每日對帳(cron,兜底機制)"]
+    R1["三方比對:<br/>bundles_root 現存清單<br/>vs ingest_ledger<br/>vs vdb 中 distinct okf_id"] --> R2{"差異?"}
+    R2 -->|"bundle 有、vdb 無"| R3["補跑寫入"]
+    R2 -->|"vdb 有、bundle 無"| R4["補跑刪除(孤兒 point)"]
+    R2 -->|"chunk 數不符"| R5["該 bundle 走 E2<br/>先刪後寫"]
+    R2 -->|"一致"| R6["對帳報告:clean"]
+    R3 --> R7["對帳報告(附修復明細)<br/>併入 B2 report 通知"]
+    R4 --> R7
+    R5 --> R7
+end
+
+subgraph PRINCIPLE["一致性原則(開發約定)"]
+    P1["vdb 永遠是 bundle 的投影:<br/>衝突時以 bundle 為準重建"]
+    P2["刪除一律 delete by okf_id filter<br/>不逐 chunk_id 刪(防漏)"]
+    P3["ingest_ledger 是唯一對帳帳本<br/>寫入 / 刪除都必須落帳"]
+end
+
+style UAL fill:#fde0e0
+style DAL fill:#fde0e0
+style R6 fill:#e8f4e8

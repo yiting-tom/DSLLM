@@ -1,0 +1,35 @@
+flowchart TD
+
+IN["bundle_created 事件<br/>讀取 bundle 內容:<br/>content/{section_id}.md<br/>figures/*.desc.md<br/>tables/*.desc.md"] --> TYPE{"內容型態分流"}
+
+TYPE -->|"section 文字"| TXT
+TYPE -->|"圖表描述"| FIG["一張圖 = 一個 chunk<br/>(描述本身已是完整單元<br/>不再切割)"]
+TYPE -->|"表格描述"| TBD["一表 = 一個 chunk<br/>(同上,不切割)<br/>raw table 不進 embedding<br/>只存路徑供回取"]
+
+subgraph TXTCHUNK["section 文字切割規則"]
+    TXT["以 section 為最大邊界<br/>(絕不跨 section 硬切)"] --> LEN{"section 長度判定<br/>(以 token 計)"}
+    LEN -->|"<= 512 tokens"| ONE["整個 section = 一個 chunk"]
+    LEN -->|"> 512 tokens"| SPLIT["段內切割:<br/>優先以空行 / 條列邊界切<br/>目標 384~512 tokens<br/>overlap 64 tokens"]
+    SPLIT --> TAIL{"尾段 < 128 tokens?"}
+    TAIL -->|"是"| MERGE["併入前一個 chunk<br/>(避免碎片)"]
+    TAIL -->|"否"| KEEP["獨立成 chunk"]
+end
+
+ONE --> ID
+MERGE --> ID
+KEEP --> ID
+FIG --> ID
+TBD --> ID
+
+ID["chunk_id 配發:<br/>{okf_id}_{section_id}_c{序號}<br/>{okf_id}_{figure_id}_desc<br/>{okf_id}_{table_id}_desc"] --> OUT["chunk 清單輸出<br/>[{chunk_id, content_kind,<br/>text, source_ref}]"]
+
+OUT --> NEXT["→ C1/C4:上下文拼接<br/>與 payload 組裝"]
+
+subgraph RULES["切割原則(開發約定)"]
+    R1["section 邊界神聖不可跨<br/>(上下文完整性 > chunk 均勻)"]
+    R2["圖表 / 表格描述永不切割<br/>(一單元一 chunk)"]
+    R3["overlap 只用於段內切割<br/>section 之間不 overlap"]
+end
+
+style SPLIT fill:#fff3e0
+style MERGE fill:#e8f4e8

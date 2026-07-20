@@ -1,0 +1,32 @@
+flowchart TD
+
+BUILD["新版本目錄建置完成<br/>v20260719_0200/"] --> CHECK{"sanity check<br/>通過?<br/>(區塊 4)"}
+
+CHECK -->|"失敗"| KEEP["保留舊版 current 不動<br/>新目錄標記為 failed_<br/>發送告警(區塊 5 report 附錯誤)"]
+KEEP --> END1["結束:查詢端無感"]
+
+CHECK -->|"通過"| SWAP["原子性 symlink 切換<br/>ln -sfn v20260719_0200 current.tmp<br/>mv -T current.tmp current<br/>(rename 為原子操作)"]
+
+SWAP --> VERIFY["切換後驗證<br/>readlink current<br/>== v20260719_0200"]
+
+VERIFY --> GC{"歷史版本數 > 5?"}
+GC -->|"是"| CLEAN["刪除最舊版本目錄<br/>keep_last_n_versions(n=5)"]
+GC -->|"否"| END2
+CLEAN --> END2["結束:發布 rebuild report<br/>(區塊 5)"]
+
+subgraph FS["目錄結構(開發參考)"]
+    direction LR
+    D1["/okf-index/<br/>├── v20260705_0200/<br/>├── v20260712_0200/<br/>├── v20260719_0200/  ← 新版<br/>└── current → v20260719_0200/"]
+end
+
+subgraph READER["查詢端(MCP tool)行為"]
+    R1["Kimi 的 index 查詢 tool<br/>永遠讀 current/ 路徑"] --> R2["重建期間讀到舊版<br/>切換瞬間後讀到新版<br/>永不讀到半成品"]
+end
+
+subgraph ROLLBACK["回滾程序(手動)"]
+    RB1["發現新版 index 有問題"] --> RB2["ln -sfn v20260712_0200 current.tmp<br/>mv -T current.tmp current"]
+    RB2 --> RB3["查詢端立即回到上一版<br/>再排查重建問題"]
+end
+
+style SWAP fill:#e8f4e8
+style KEEP fill:#fde0e0

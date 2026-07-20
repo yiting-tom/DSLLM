@@ -1,0 +1,39 @@
+flowchart TD
+
+IN["檢索結果集<br/>(各 tool 回傳,<br/>皆含 citation 欄位:<br/>okf_id + doc_title<br/>+ section/figure/table id)"] --> DRAFT
+
+subgraph COMPOSE["回答組合規則(skill prompt 明訂)"]
+    DRAFT["Kimi 起草回答"] --> RULE1["每個事實性論點<br/>句末標注出處:<br/>【OKF-2026-0143 §3 表2】"]
+    RULE1 --> RULE2["數值引用一律取自<br/>raw_table 原文<br/>(非 desc 的轉述數字)"]
+    RULE2 --> RULE3["多來源支持同一論點<br/>→ 並列標注<br/>來源互相矛盾<br/>→ 明示矛盾 + 各自出處<br/>+ 建議以較新文件為準"]
+    RULE3 --> RULE4["無出處支持的推論<br/>必須明示為推測:<br/>『依上述資料推測...』"]
+end
+
+RULE4 --> CHECK
+
+subgraph VERIFY["送出前自我檢核(prompt 要求)"]
+    CHECK{"逐條檢核:<br/>1. 每個論點有標注?<br/>2. 標注的 id 都出現在<br/>本輪 tool 結果中?<br/>(禁止憑記憶標注)<br/>3. 數值與 raw_table 一致?"}
+    CHECK -->|"發現無依據論點"| FIX["刪除該論點<br/>或補跑檢索求證"]
+    FIX --> CHECK
+    CHECK -->|"通過"| FINAL
+end
+
+FINAL["送出回答<br/>末尾附參考文件清單:<br/>okf_id + doc_title + 日期<br/>(供工程師回溯原文)"]
+
+FINAL --> TRACE
+
+subgraph TRACE["可回溯性(系統面配套)"]
+    TR1["工程師點選 / 詢問某出處<br/>→ read_bundle(okf_id, part)<br/>直接展示原文段落"]
+    TR2["問答記錄落 log:<br/>question / 回答<br/>/ tool call 軌跡 / citations"]
+end
+
+TR2 -.->|"E1 出題素材<br/>E2 引用正確率評估<br/>embedding 微調樣本"| E["→ E 評估體系"]
+
+subgraph WHY["設計理由(備註)"]
+    W1["良率工程師的決策<br/>要能對上游交代——<br/>不可驗證的回答等於沒有回答"]
+    W2["『標注 id 必須在本輪結果中』<br/>是擋幻覺引用的最後閘門<br/>(對應 b2_4 檢核 5 的<br/>同型設計)"]
+end
+
+style CHECK fill:#fff3e0
+style FIX fill:#fde0e0
+style FINAL fill:#e8f4e8

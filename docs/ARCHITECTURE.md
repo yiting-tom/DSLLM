@@ -26,6 +26,8 @@
 
 ## 1. 全系統
 
+> 完整的三層下鑽圖組(L0 全景 → L1 分區 → L2 實作)見 [`diagrams/`](diagrams/README.md)。
+
 ```mermaid
 flowchart TB
     subgraph OFF["離線轉換 · self-host K2.7 多模態 · 批次"]

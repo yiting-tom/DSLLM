@@ -1,0 +1,47 @@
+flowchart TD
+
+IN["chunk 清單<br/>(來自 c_0)"] --> PAR["逐 chunk 並行處理<br/>(batch)"]
+
+subgraph C1["C1:embed_text 組裝"]
+    PAR --> E1["讀取 bundle 的<br/>SUMMARY.md front matter<br/>(doc_title / doc_type ...)"]
+    E1 --> E2["拼接模板:<br/>【{doc_title}|{section_title}】<br/>{chunk text}"]
+    E2 --> E3{"content_kind?"}
+    E3 -->|"fig_desc"| E4["模板加註圖表脈絡:<br/>【...|{section_title}<br/>|圖 {figure_id}】"]
+    E3 -->|"table_desc"| E5["模板加註表格脈絡:<br/>【...|表 {table_id}】"]
+    E3 -->|"text"| E6["標準模板"]
+    E4 --> ET["embed_text 完成"]
+    E5 --> ET
+    E6 --> ET
+end
+
+subgraph C4["C4:payload 組裝(schema.yaml 單一定義)"]
+    PAR --> P1["必填欄位:<br/>okf_id / chunk_id<br/>section_id 或 figure_id/table_id<br/>content_kind: text|fig_desc|table_desc<br/>process_station[] / tool[]<br/>doc_type / date_range<br/>source_quality"]
+    P1 --> P2["條件欄位:<br/>linked_table(僅 table_desc)<br/>desc_quality(僅 VLM 產物)"]
+    P2 --> P3["欄位驗證:<br/>值皆 canonical(A4)<br/>schema 版本號戳記<br/>schema_ver: v1"]
+end
+
+subgraph EMBED["向量化(雙路)"]
+    ET --> D1["dense: BGE-M3<br/>batch 推論(GPU serving)"]
+    ET --> S1["sparse: BM25 斷詞<br/>(embed_text 已是<br/>canonical 正規形)"]
+end
+
+D1 --> UP
+S1 --> UP
+P3 --> UP
+
+subgraph UPSERT["寫入 Vector DB"]
+    UP["組裝 point:<br/>id = hash(chunk_id)<br/>dense_vec + sparse_vec<br/>+ payload"] --> W1["批次 upsert<br/>(每批 64~128 points)"]
+    W1 --> W2{"寫入驗證:<br/>該 bundle 的 point 數<br/>== chunk 清單數?"}
+    W2 -->|"否"| W3["整 bundle 重寫一次<br/>再失敗 → 告警<br/>+ 記 ingest_errors"]
+    W2 -->|"是"| W4["寫入 ingest_ledger:<br/>okf_id / chunk 數<br/>/ schema_ver / 時間戳"]
+end
+
+W4 --> DONE["該 bundle 檢索就緒"]
+
+subgraph LEDGER["ingest_ledger 用途(開發備註)"]
+    L1["增量同步的對帳依據<br/>(見 c_4 同步圖)"]
+    L2["schema 改版時<br/>找出需要回填的舊 bundle"]
+end
+
+style W3 fill:#fde0e0
+style W4 fill:#e8f4e8

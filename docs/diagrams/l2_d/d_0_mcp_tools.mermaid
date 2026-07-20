@@ -1,0 +1,34 @@
+flowchart TD
+
+subgraph TOOLS["MCP Server 提供的五個 tool(介面契約)"]
+    T1["read_topics()<br/>→ TOPICS.md 全文"]
+    T2["read_index(station?, doc_type?)<br/>→ 對應層 INDEX.md<br/>不帶參數 = 根目錄總覽"]
+    T3["read_bundle(okf_id,<br/>part: summary|section_id<br/>|figure_id|table_id)<br/>→ 指定內容"]
+    T4["hybrid_search(query,<br/>filters?, top_k=8)<br/>→ results + citations<br/>(c_2 / c_3 流程)"]
+    T5["filter_documents(filters,<br/>mode: list|count,<br/>page?, page_size=50)<br/>→ 完整文件清單 / 數量"]
+end
+
+subgraph LIFECYCLE["每次 tool call 的共通生命週期"]
+    IN["Kimi 發出 tool call"] --> VAL{"參數 schema 驗證<br/>(JSON schema)"}
+    VAL -->|"失敗"| ERR["結構化錯誤回傳:<br/>error_code + 說明<br/>+ 正確用法範例<br/>(讓模型自我修正)"]
+    VAL -->|"通過"| NORM["filter/參數值<br/>alias → canonical(A4)"]
+    NORM --> EXEC["路由至對應實作:<br/>T1/T2/T3 → 檔案系統 current/<br/>T4/T5 → vector DB"]
+    EXEC --> LIMIT{"回應大小檢查"}
+    LIMIT -->|"超過上限"| TRUNC["截斷 + 附<br/>truncated: true<br/>與取得餘下內容的方法<br/>(分頁 / 指定 part)"]
+    LIMIT -->|"正常"| RESP["回傳結果"]
+    TRUNC --> RESP
+    RESP --> LOG["tool call log:<br/>tool 名 / 參數 / 延遲<br/>/ 結果筆數 / error"]
+end
+
+ERR --> LOG
+LOG -.->|"供 E2 分析<br/>工具使用行為"| E["→ E 評估"]
+
+subgraph DESIGN["介面設計原則(開發約定)"]
+    D1["錯誤回傳必附修正指引:<br/>模型看得懂才能 agentic 重試"]
+    D2["read 類 tool 唯讀 current/<br/>永不觸碰版本目錄"]
+    D3["所有 filter 欄位名 / 枚舉值<br/>取自 schema.yaml(見 d_2)"]
+    D4["tool description 中<br/>寫明各 tool 的適用查詢類型<br/>(輔助 d_3 路由)"]
+end
+
+style ERR fill:#fff3e0
+style TRUNC fill:#fff3e0

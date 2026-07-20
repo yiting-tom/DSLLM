@@ -1,0 +1,24 @@
+flowchart TD
+
+subgraph TRIGGERS["觸發來源(三軌並行)"]
+    T1["計數觸發<br/>OKF pipeline 每產出新 bundle<br/>counter += 1"]
+    T2["排程觸發<br/>cron: 0 2 * * 0<br/>每週日 02:00"]
+    T3["手動觸發<br/>CLI: rebuild --force<br/>時機:schema 改版 /<br/>vocabulary.yaml 更新"]
+end
+
+T1 --> C1{"counter >= 20?"}
+C1 -->|"否"| WAIT["等待下一個 bundle"]
+C1 -->|"是"| ENQ["送出 rebuild 請求"]
+T2 --> ENQ
+T3 --> ENQ
+
+ENQ --> LOCK{"取得 rebuild lock?<br/>(防止並行重建)"}
+LOCK -->|"已有重建進行中"| SKIP["記 log 後略過<br/>(排程/計數觸發)<br/>或排入佇列(手動)"]
+LOCK -->|"取得成功"| RESET["counter 歸零<br/>記錄 trigger_type 與時間"]
+
+RESET --> JOB["啟動 rebuild job<br/>→ 進入區塊 2:重建流程"]
+
+JOB --> DONE["job 結束(成功或失敗)"]
+DONE --> UNLOCK["釋放 lock"]
+
+style JOB fill:#e8f4e8

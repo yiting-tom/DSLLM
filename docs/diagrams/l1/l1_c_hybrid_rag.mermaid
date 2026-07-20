@@ -1,0 +1,52 @@
+flowchart TD
+
+subgraph INGEST["寫入端(建置時)"]
+    IN[("OKF Bundle<br/>content / figures.desc<br/>/ tables + tables.desc")] --> CHUNK["chunk 切割<br/>依章節邊界<br/>(不跨章節硬切)"]
+
+    subgraph C1["C1:上下文拼接"]
+        CHUNK --> CTX["embed_text 組裝:<br/>【doc_title|section_title】<br/>+ chunk 內容<br/>(圖表描述同樣處理)"]
+    end
+
+    subgraph C4["C4:metadata payload"]
+        CHUNK --> PAY["payload 組裝:<br/>okf_id / 章節或圖表編號<br/>process_station / tool<br/>date_range / doc_type<br/>content_kind(text|fig_desc|table)<br/>linked_table(若為表格描述)"]
+    end
+
+    CTX --> EMB["dense embedding<br/>(BGE-M3 或同級)"]
+    CTX --> SPARSE["BM25 / sparse 索引<br/>(經 A4 canonical 正規化)"]
+
+    EMB --> UPSERT["寫入 vector DB<br/>(Qdrant / Milvus:<br/>dense + sparse + payload<br/>同筆記錄)"]
+    SPARSE --> UPSERT
+    PAY --> UPSERT
+    UPSERT --> VDB[("Vector DB")]
+end
+
+subgraph QUERY["查詢端(查詢時)"]
+    Q["query(來自 D 層 router)"] --> QNORM["query 正規化:<br/>A4 alias 展開<br/>(BM25 用全組 aliases<br/>dense 用原句)"]
+
+    QNORM --> PREF{"帶 metadata 條件?<br/>(站點 / 機台 / 日期)"}
+    PREF -->|"是"| FILTER["payload pre-filter<br/>先縮小檢索空間(D2)"]
+    PREF -->|"否"| BOTH
+    FILTER --> BOTH
+
+    subgraph C2["C2:hybrid 檢索"]
+        BOTH["雙路並行檢索"] --> DR["dense top-50"]
+        BOTH --> BR["BM25 top-50"]
+        DR --> RRF["RRF 融合<br/>→ 候選 top-50"]
+        BR --> RRF
+    end
+
+    subgraph C3["C3:rerank"]
+        RRF --> RER["cross-encoder rerank<br/>BGE-reranker-v2-m3<br/>(query, chunk) 逐對打分"]
+        RER --> TOPK["top-5~10"]
+    end
+
+    TOPK --> RESOLVE["結果解析:<br/>table 描述 → 取回 linked_table 原文<br/>fig 描述 → 附 okf_id + figure_id<br/>供 D4 出處標注"]
+    RESOLVE --> RET["回傳給 Kimi<br/>(chunk + 完整 metadata)"]
+end
+
+VDB --> BOTH
+
+style C2 fill:#e8f0fe
+style C3 fill:#e8f0fe
+style C1 fill:#e8f4e8
+style C4 fill:#e8f4e8

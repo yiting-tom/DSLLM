@@ -1,0 +1,55 @@
+flowchart TD
+
+Q["YED 工程師提問"] --> CLS["Kimi 判斷查詢類型<br/>(D3 system prompt / skill 定義)"]
+
+CLS -->|"navigational<br/>找特定文件 / SOP"| NAV
+CLS -->|"語意探索<br/>為什麼 / 有哪些經驗"| SEM
+CLS -->|"列舉統計<br/>共幾份 / 列出全部"| ENUM
+CLS -->|"綜觀趨勢<br/>近期整體狀況"| PAN
+
+subgraph NAV["路徑一:索引導航"]
+    N1["tool: read_topics<br/>讀 TOPICS.md 定位主題"] --> N2["tool: read_index<br/>讀對應層 INDEX.md<br/>比對 schema 欄位"]
+    N2 --> N3["tool: read_bundle<br/>讀 SUMMARY 確認<br/>→ 讀內容 chunk"]
+end
+
+subgraph SEM["路徑二:hybrid RAG"]
+    S1["tool: hybrid_search<br/>(C pipeline 查詢端)<br/>可帶 metadata pre-filter"] --> S2{"結果相關性足夠?"}
+    S2 -->|"否"| S3["改寫 query 再查<br/>(換術語 / 拆子問題)<br/>最多 N 輪"]
+    S3 --> S1
+    S2 -->|"仍不佳"| S4["fallback:<br/>tool: grep_bundles<br/>精確關鍵字掃描"]
+end
+
+subgraph ENUM["路徑三:metadata filter(D1)"]
+    E1["tool: filter_documents<br/>vdb scroll + payload filter<br/>站點 / 機台 / 日期 / 類型"] --> E2["回傳完整清單<br/>(不多不少,非 top-k)"]
+end
+
+subgraph PAN["路徑四:綜觀(agentic 組合)"]
+    P1["tool: filter_documents<br/>先列出範圍內全部文件"] --> P2["逐份讀 SUMMARY.md<br/>(A1 區塊)"]
+    P2 --> P3["必要時對個別文件<br/>hybrid_search 補細節"]
+    P3 --> P4["Kimi 自行綜合趨勢"]
+end
+
+N3 --> MERGE["彙整檢索結果"]
+S2 -->|"是"| MERGE
+S4 --> MERGE
+E2 --> MERGE
+P4 --> MERGE
+
+subgraph D4["D4:出處標注"]
+    MERGE --> CITE["組合回答,每項論點標注:<br/>okf_id + 章節 / 圖表 / 表格編號<br/>(來自 C4 payload 或 bundle 路徑)"]
+end
+
+CITE --> ANS["回覆工程師<br/>(可回溯驗證)"]
+
+subgraph D2["D2:schema 同步(建置時約定)"]
+    SYNC["B1 index 欄位定義<br/>== C4 payload 欄位定義<br/>單一 schema 檔維護<br/>(schema.yaml)"]
+end
+
+SYNC -.->|"約束"| N2
+SYNC -.->|"約束"| E1
+
+ANS -.->|"問答記錄"| LOG["查詢 log<br/>→ E 評估 / embedding 微調素材"]
+
+style CLS fill:#e8f0fe
+style D4 fill:#e8f4e8
+style D2 fill:#fef7e0

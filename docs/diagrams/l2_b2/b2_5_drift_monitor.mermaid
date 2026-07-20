@@ -1,0 +1,28 @@
+flowchart TD
+
+DONE["symlink 切換完成<br/>(區塊 3)"] --> COLLECT
+
+subgraph GEN["Rebuild Report 生成"]
+    COLLECT["彙整本次重建數據:<br/>掃描 bundle 數 / entry 數<br/>error_report / warnings<br/>topic 數與各 cluster 大小"] --> DIFF["與上一版比對:<br/>bundle 增減量<br/>entry 增減量<br/>topic 新增 / 消失 / 大小變化"]
+    DIFF --> VOCAB["統計 vocabulary misses:<br/>正規化階段遇到的<br/>不在 vocabulary.yaml 中<br/>但疑似術語的高頻詞"]
+    VOCAB --> REPORT["輸出 rebuild_report.md<br/>存於新版本目錄<br/>並發送通知(mail / chat)"]
+end
+
+REPORT --> A1["error_report 有內容?"]
+A1 -->|"是"| FIX_BUNDLE["工程師修補對應 bundle<br/>的 front matter<br/>(缺欄位 / 格式錯)"]
+FIX_BUNDLE --> NEXTBUILD["下次重建自動納入"]
+
+REPORT --> A2["vocabulary misses 有內容?"]
+A2 -->|"是"| FILL_VOCAB["回填 A4 vocabulary.yaml<br/>新增 canonical + aliases"]
+FILL_VOCAB --> MANUAL["vocabulary 更新後<br/>手動觸發全量重建<br/>(區塊 1 的手動軌)"]
+
+REPORT --> A3["topic 結構異常變化?<br/>(cluster 忽大忽小 /<br/>主題消失)"]
+A3 -->|"是"| REVIEW["人工檢視 TOPICS.md<br/>必要時調整<br/>llm_generate_topics 的 prompt"]
+
+subgraph TREND["長期趨勢追蹤(選配)"]
+    REPORT --> TS["各版本關鍵指標<br/>寫入時序記錄<br/>(entry 數 / error 率 /<br/>vocab miss 數)"]
+    TS --> DASH["儀表板觀察:<br/>error 率應收斂至 0<br/>vocab miss 應遞減<br/>持續上升 = pipeline 品質退化"]
+end
+
+style REPORT fill:#e8f4e8
+style MANUAL fill:#fff3e0

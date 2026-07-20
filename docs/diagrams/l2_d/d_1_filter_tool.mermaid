@@ -1,0 +1,41 @@
+flowchart TD
+
+IN["filter_documents 被呼叫<br/>filters: {process_station?,<br/>tool?, doc_type?,<br/>date_from?, date_to?,<br/>defect_mode?}<br/>mode: list | count<br/>page / page_size"] --> VAL{"filter 驗證:<br/>至少一個條件?<br/>欄位在 schema.yaml?<br/>值可正規化為 canonical?"}
+
+VAL -->|"零條件"| E1["拒絕 + 說明:<br/>需至少一個 filter<br/>(防全量掃描)"]
+VAL -->|"欄位 / 值不合法"| E2["錯誤 + 附:<br/>可用欄位清單<br/>該欄位的枚舉值取樣"]
+VAL -->|"通過"| BUILD
+
+BUILD["組 vdb filter 條件(must AND):<br/>date 轉 range 條件<br/>陣列欄位用 match_any"] --> DEDUP["關鍵:以 okf_id 去重<br/>(vdb 存的是 chunk,<br/>列舉單位是文件)<br/>scroll 全量 + 程式端<br/>group by okf_id"]
+
+DEDUP --> MODE{"mode?"}
+
+MODE -->|"count"| CNT["回傳 distinct okf_id 數<br/>+ 各 station / doc_type<br/>的分組小計"]
+
+MODE -->|"list"| LIST["每個 okf_id 取代表資訊:<br/>doc_title / doc_type<br/>date_range / process_stations<br/>(從任一 chunk payload 即得,<br/>欄位是 bundle 級)"]
+
+LIST --> SORT["依 date_range 降冪排序"]
+SORT --> PAGE{"結果數 > page_size?"}
+PAGE -->|"是"| PG["分頁回傳:<br/>items + total + next_page<br/>(Kimi 需要全量時逐頁取)"]
+PAGE -->|"否"| ALL["整批回傳 + total"]
+
+CNT --> OUT
+PG --> OUT
+ALL --> OUT
+
+OUT["回應含 applied_filters<br/>(canonical 化後的實際條件,<br/>供 Kimi 確認語意無偏移)"]
+
+subgraph GUARANTEE["正確性保證(此 tool 的存在理由)"]
+    G1["結果 = 全部符合條件的文件<br/>不多不少(非 top-k)"]
+    G2["前提:c_4 對帳保證<br/>vdb 與 bundle 一致"]
+    G3["total 數字可直接用於<br/>『共幾份』類回答"]
+end
+
+subgraph USAGE["典型呼叫(開發參考)"]
+    U1["『Q4 CMP 站幾份 defect 報告』<br/>→ mode=count,<br/>station=CMP, doc_type=異常分析報告,<br/>date_from=2025-10-01"]
+    U2["綜觀查詢第一步(l1_d 路徑四)<br/>→ mode=list 列範圍<br/>→ 逐份 read_bundle(summary)"]
+end
+
+style E1 fill:#fde0e0
+style E2 fill:#fff3e0
+style DEDUP fill:#e8f4e8

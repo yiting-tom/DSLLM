@@ -1,0 +1,48 @@
+flowchart TD
+
+SRC["原始文件<br/>pptx / pdf / docx"] --> PARSE["格式解析器<br/>python-pptx / pdfplumber / python-docx"]
+
+PARSE --> TXT["文字內容<br/>(保留章節結構)"]
+PARSE --> IMG["圖片 / 圖表<br/>(含所在章節位置)"]
+PARSE --> TBL["表格<br/>(含所在章節位置)"]
+
+subgraph A2["A2:VLM 圖表描述化"]
+    IMG --> CTX["組裝 prompt 上下文:<br/>doc_title + section_title<br/>+ figure_id"]
+    CTX --> VLM["VLM 推論<br/>(數據結論式描述 prompt)"]
+    VLM --> DESC["圖表描述文字:<br/>參數 / 站點機台 / 異常時點<br/>/ 超標方向 / 事件標記 / 數值"]
+end
+
+subgraph A3["A3:表格雙軌"]
+    TBL --> RAW["軌道一:原始 markdown<br/>table_id 標記<br/>(供精確引用)"]
+    TBL --> TDESC["軌道二:LLM 語意描述<br/>linked_table 指回原表<br/>(供 embedding 召回)"]
+end
+
+subgraph A4["A4:術語正規化"]
+    VOCAB[("vocabulary.yaml<br/>canonical + aliases")]
+    TXT --> NORM["normalize()<br/>alias → canonical<br/>正規表達式逐條替換"]
+    DESC --> NORM
+    TDESC --> NORM
+    VOCAB --> NORM
+    NORM --> MISS["未命中的疑似術語<br/>→ 記入 vocab_miss log<br/>(供 B2 report 回填)"]
+end
+
+subgraph A1["A1:SUMMARY 生成"]
+    NORM --> META["抽取結構化欄位:<br/>doc_id / doc_type / date_range<br/>process_stations / tools<br/>defect_modes / related_params"]
+    META --> FM["YAML front matter"]
+    NORM --> ABS["LLM 生成摘要正文<br/>+ 關鍵結論(3~5 條)"]
+    FM --> SUMMD["SUMMARY.md"]
+    ABS --> SUMMD
+end
+
+SUMMD --> BUNDLE["OKF Bundle 輸出"]
+NORM --> CHUNKS["內容 chunk 檔"]
+RAW --> CHUNKS
+CHUNKS --> BUNDLE
+
+BUNDLE --> OUT[("bundles_root/<br/>OKF-YYYY-NNNN/<br/>├── SUMMARY.md<br/>├── content/*.md<br/>├── figures/*.desc.md<br/>└── tables/*.md + *.desc.md")]
+
+OUT -.->|"供 B 建索引"| B["→ B pipeline"]
+OUT -.->|"供 C 寫入 vdb"| C["→ C pipeline"]
+
+style A2 fill:#fff3e0
+style A1 fill:#e8f4e8

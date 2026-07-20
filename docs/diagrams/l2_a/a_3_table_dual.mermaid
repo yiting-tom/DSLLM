@@ -1,0 +1,40 @@
+flowchart TD
+
+IN["tables.json<br/>[{table_id, section_id,<br/>markdown, extract_quality}]"] --> Q{"extract_quality<br/>判定"}
+
+Q -->|"good<br/>(結構完整)"| TRACK
+Q -->|"poor<br/>(格線缺失 / 併儲存格亂)"| RAST["整表 rasterize 成圖片<br/>改走 A2 VLM 路徑<br/>(當作圖表處理)<br/>標記 origin: table_as_image"]
+
+subgraph TRACK["雙軌生成"]
+    direction TB
+
+    subgraph T1["軌道一:原始表(確定性)"]
+        M1["markdown 清整:<br/>去空欄列 / 對齊欄位<br/>/ 表頭偵測"] --> M2["寫入<br/>tables/{table_id}.md<br/>front matter:<br/>table_id / section_id<br/>type: raw_table"]
+    end
+
+    subgraph T2["軌道二:語意描述(LLM)"]
+        D1["Prompt 組裝:<br/>doc_title + section_title<br/>+ 表格 markdown 全文<br/>+ 前後文 200 字"] --> D2["LLM 生成描述:<br/>表格比較什麼 / 關鍵數值<br/>與差異 / 判定結論<br/>(禁止逐格複述)"]
+        D2 --> D3{"QC:<br/>描述中出現的數值<br/>是否都存在於原表?<br/>(regex 抽數字比對)"}
+        D3 -->|"有原表不存在的數值<br/>= 幻覺"| D4["重試,最多 2 次<br/>耗盡則降級:<br/>表頭 + 首列作為描述<br/>desc_quality: fallback"]
+        D4 --> D2
+        D3 -->|"通過"| D5["→ A4 正規化"]
+        D5 --> D6["寫入<br/>tables/{table_id}.desc.md<br/>front matter:<br/>linked_table: {table_id}<br/>type: table_description"]
+    end
+end
+
+M2 --> LINK["雙向關聯確認:<br/>desc.md 的 linked_table<br/>指向存在的 raw 檔"]
+D6 --> LINK
+
+LINK --> OUT1["軌道一 → bundle 內容<br/>(D 層回答時精確引用)"]
+LINK --> OUT2["軌道二 → C1 embedding<br/>(語意召回用)<br/>payload 帶 linked_table"]
+
+RAST -.-> A2["→ A2 流程"]
+
+subgraph USAGE["查詢時的取用關係(參考)"]
+    U1["hybrid 檢索命中 desc"] --> U2["由 payload.linked_table<br/>取回 raw markdown"]
+    U2 --> U3["Kimi 引用精確數值<br/>(2712Å 而非約 2700)"]
+end
+
+style D3 fill:#fff3e0
+style D4 fill:#fde0e0
+style RAST fill:#f0f0f0

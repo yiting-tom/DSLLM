@@ -1,0 +1,41 @@
+flowchart TD
+
+IN["正規化後素材:<br/>sections.json(文字)<br/>figures/*.desc.md<br/>tables/*.md + *.desc.md"] --> META
+
+subgraph EXTRACT["結構化欄位抽取"]
+    META["LLM 抽取(單次 call,<br/>強制 JSON schema 輸出):<br/>doc_type / date_range<br/>process_stations[] / tools[]<br/>defect_modes[] / related_params[]"] --> MV{"欄位驗證(程式):<br/>值皆為 canonical?<br/>doc_type 在枚舉清單內?<br/>date_range 格式合法?"}
+    MV -->|"含非 canonical 值"| MFIX["查 alias 表自動修正<br/>修不了 → 該欄位留空<br/>+ 記 warning"]
+    MV -->|"通過"| FM
+    MFIX --> FM["組裝 YAML front matter<br/>doc_id 依規則配發:<br/>OKF-{年}-{流水號}"]
+end
+
+subgraph ABSTRACT["摘要正文生成"]
+    IN --> AB1["LLM 生成(第二次 call):<br/>摘要正文 150~300 字<br/>+ 關鍵結論 3~5 條<br/>輸入:全部 section 文字<br/>+ 圖表描述 + 表格描述"]
+    AB1 --> AB2{"QC:<br/>結論中的數值 / doc_id<br/>存在於素材中?<br/>長度在範圍內?"}
+    AB2 -->|"失敗"| AB3["重試最多 2 次<br/>耗盡 → 首 section 前 200 字<br/>作為摘要,標記 fallback<br/>+ 記入 review 清單"]
+    AB3 --> AB1
+    AB2 -->|"通過"| SUMMD
+end
+
+FM --> SUMMD["組裝 SUMMARY.md<br/>= front matter + 摘要 + 關鍵結論"]
+
+subgraph PACK["Bundle 打包"]
+    SUMMD --> P1["建立目錄<br/>bundles_root/OKF-{年}-{流水號}/"]
+    P1 --> P2["寫入:<br/>SUMMARY.md<br/>content/{section_id}.md<br/>figures/{figure_id}.desc.md<br/>tables/{table_id}.md + .desc.md<br/>manifest.json(檔案清單 + hash)"]
+    P2 --> P3{"完整性檢核:<br/>manifest 內每個檔案存在<br/>且 hash 相符?<br/>SUMMARY front matter<br/>可被 parser 讀回?"}
+    P3 -->|"失敗"| P4["整個 bundle 標記 failed_<br/>不對外發布、告警"]
+    P3 -->|"通過"| P5["bundle 就緒:<br/>發出 bundle_created 事件"]
+end
+
+P5 --> E1["→ B pipeline<br/>(rebuild counter += 1)"]
+P5 --> E2["→ C pipeline<br/>(觸發該 bundle 的<br/>chunk / embedding 寫入)"]
+
+subgraph NOTE["開發備註"]
+    N1["A1 共兩次 LLM call:<br/>欄位抽取(JSON mode)<br/>+ 摘要生成<br/>兩者可 batch 併發"]
+    N2["fallback 與 warning<br/>都會出現在 B2 report<br/>形成人工修補入口"]
+end
+
+style MV fill:#fff3e0
+style AB2 fill:#fff3e0
+style P4 fill:#fde0e0
+style P5 fill:#e8f4e8

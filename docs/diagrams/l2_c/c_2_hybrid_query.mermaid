@@ -1,0 +1,42 @@
+flowchart TD
+
+IN["hybrid_search MCP tool 被呼叫<br/>參數:query(必填)<br/>filters(選填:站點/機台/日期/類型)<br/>top_k(預設 8)"] --> VALID{"參數驗證:<br/>filter 欄位存在於 schema?<br/>filter 值為 canonical<br/>或可經 alias 轉換?"}
+
+VALID -->|"filter 值是 alias"| CONV["alias → canonical 轉換<br/>(A4 對照表)"]
+VALID -->|"欄位不存在"| ERRP["回傳錯誤 + 可用欄位清單<br/>(讓 Kimi 自我修正重呼叫)"]
+CONV --> QPROC
+VALID -->|"通過"| QPROC
+
+subgraph QEXP["query 處理(A4 查詢端)"]
+    QPROC["斷詞 + 查 vocabulary"] --> QD["dense 路:原句不變"]
+    QPROC --> QB["BM25 路:命中詞展開<br/>(canonical OR alias1 OR ...)"]
+end
+
+subgraph PREFILTER["pre-filter(D2 接點)"]
+    QD --> F1{"有 filters?"}
+    QB --> F1
+    F1 -->|"是"| F2["組 payload filter 條件<br/>(must: 全部 AND)"]
+    F1 -->|"否"| SEARCH
+    F2 --> FC{"filter 後候選數檢查"}
+    FC -->|"= 0"| FE["回傳空結果 + 提示:<br/>逐一放寬條件的建議<br/>(讓 Kimi 決定重試策略)"]
+    FC -->|"> 0"| SEARCH
+end
+
+subgraph HYBRID["C2:雙路檢索 + 融合"]
+    SEARCH["並行發出兩路查詢<br/>(帶相同 filter)"] --> HD["dense search<br/>top-50"]
+    SEARCH --> HB["BM25 search<br/>top-50"]
+    HD --> RRF["RRF 融合:<br/>score = Σ 1/(60 + rank_i)<br/>兩路皆未命中者剔除重複"]
+    HB --> RRF
+    RRF --> CAND["候選 top-50<br/>(附 payload)"]
+end
+
+CAND --> NEXT["→ C3 rerank(見 c_3 圖)"]
+
+subgraph TUNE["調參備註(開發參考)"]
+    T1["RRF k=60 為起始值<br/>用 E2 評估集調"]
+    T2["兩路各 top-50 是起始值<br/>召回不足先加大 BM25 路"]
+    T3["觀察指標:融合前<br/>兩路各自的 hit rate<br/>→ 判斷弱項在哪路"]
+end
+
+style ERRP fill:#fde0e0
+style FE fill:#fff3e0
