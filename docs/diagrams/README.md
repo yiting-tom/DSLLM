@@ -118,3 +118,5 @@ diagrams/
 ## 狀態
 
 全套 21 張已完成:L0 × 1、L1 × 4、L2 × 16(A 五張、B2 五張、C 五張、D 五張)。後續需要針對某張圖產出對應的程式骨架,指定圖即可。
+
+圖組中的 prompt 與 schema 內容已抽出成可實作的文字檔:[`../schema/`](../schema/README.md)(schema.yaml、MCP tool 介面契約)、[`../prompts/`](../prompts/README.md)(A1×2 / A2 / A3 / B2 Step5 的 prompt 全文、C1 embed 模板、D3 skill prompt)。
